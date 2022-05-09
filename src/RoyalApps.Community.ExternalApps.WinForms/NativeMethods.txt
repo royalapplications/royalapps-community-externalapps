@@ -1,0 +1,16 @@
+AdjustWindowRectEx
+GetWindowLong
+GetWindowRect
+GetWindowText
+GetWindowTextLength
+MoveWindow
+PrintWindow
+SetFocus
+SetForegroundWindow
+SetParent
+SetWindowLong
+SetWinEventHook
+ShowWindow
+UnhookWinEvent
+
+RECT
