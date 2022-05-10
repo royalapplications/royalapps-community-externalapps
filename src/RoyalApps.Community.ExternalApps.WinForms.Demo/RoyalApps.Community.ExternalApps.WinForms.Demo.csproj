@@ -8,4 +8,8 @@
         <ImplicitUsings>enable</ImplicitUsings>
     </PropertyGroup>
 
+    <ItemGroup>
+      <ProjectReference Include="..\RoyalApps.Community.ExternalApps.WinForms\RoyalApps.Community.ExternalApps.WinForms.csproj" />
+    </ItemGroup>
+
 </Project>

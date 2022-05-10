@@ -1,10 +1,16 @@
 AdjustWindowRectEx
+EnumDesktopWindows
+GetMessage
 GetWindowLong
 GetWindowRect
 GetWindowText
 GetWindowTextLength
+GetWindowThreadProcessId
+IsWindowVisible
 MoveWindow
+PostMessage
 PrintWindow
+SendMessage
 SetFocus
 SetForegroundWindow
 SetParent
@@ -13,4 +19,11 @@ SetWinEventHook
 ShowWindow
 UnhookWinEvent
 
-RECT
+WM_MOUSEACTIVATE
+WM_LBUTTONDOWN
+WM_MDIACTIVATE
+WM_SETFOCUS
+
+EVENT_OBJECT_NAMECHANGE
+
+WINEVENT_OUTOFCONTEXT

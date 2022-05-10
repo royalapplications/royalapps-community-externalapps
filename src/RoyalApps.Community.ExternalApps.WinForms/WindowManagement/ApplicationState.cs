@@ -1,6 +1,6 @@
 namespace RoyalApps.Community.ExternalApps.WinForms;
 
-public enum ExecutionState
+public enum ApplicationState
 {
     Starting,
     Running,

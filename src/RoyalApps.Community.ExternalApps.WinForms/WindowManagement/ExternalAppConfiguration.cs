@@ -1,6 +1,6 @@
 namespace RoyalApps.Community.ExternalApps.WinForms;
 
-public class ExternalAppConfig
+public class ExternalAppConfiguration
 {
     /// <summary>
     /// Gets or sets the command (executable) of the external application.

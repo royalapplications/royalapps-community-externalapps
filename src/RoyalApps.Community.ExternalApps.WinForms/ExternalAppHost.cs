@@ -7,13 +7,19 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
-using System.Management;
 using System.Runtime.CompilerServices;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+
+using Microsoft.Extensions.Logging;
+
+using RoyalApps.Community.ExternalApps.WinForms.WindowManagement;
+
 using Windows.Win32;
+using Windows.Win32.Foundation;
+using Windows.Win32.UI.Accessibility;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace RoyalApps.Community.ExternalApps.WinForms;
 
@@ -22,746 +28,490 @@ namespace RoyalApps.Community.ExternalApps.WinForms;
 /// </summary>
 public class ExternalAppHost : UserControl
 {
-    //public ILogger Logger { get; set; }
-    
-    public ExternalAppState ExternalAppState { get; } = new();
 
-    private long _originalGwlStyle;
-    private long _embeddedGwlStyle;
+    private HWND _ownerHandle;
+
+    /// <summary>
+    /// 
+    /// </summary>
+    public ILogger? Logger { get; set; }
+
+    private ExternalApp? _externalApp;
+
+    private Windows.Win32.UI.WindowsAndMessaging.WINDOW_STYLE _originalGwlStyle;
+    private Windows.Win32.UI.WindowsAndMessaging.WINDOW_STYLE _embeddedGwlStyle;
 
     // ReSharper disable once CollectionNeverQueried.Local
-    private readonly List<User32.WinEventDelegate> _winEventProcs = new();
+    private readonly List<WINEVENTPROC> _winEventProcs = new();
     private readonly List<IntPtr> _winEventHooks = new();
 
+    /// <summary>
+    /// 
+    /// </summary>
     public event EventHandler<EventArgs>? ApplicationActivated;
+    /// <summary>
+    /// 
+    /// </summary>
     public event EventHandler<EventArgs>? ApplicationStarted;
+    /// <summary>
+    /// 
+    /// </summary>
     public event EventHandler<EventArgs>? ApplicationClosed;
+    /// <summary>
+    /// 
+    /// </summary>
     public event EventHandler<EventArgs>? WindowTitleChanged;
 
+    /// <inheritdoc />
     protected override void Dispose(bool disposing)
     {
         if (disposing)
         {
-            if (ExternalAppState.Process != null)
-            {
-                ExternalAppState.Process.Exited -= AppProcess_Exited;
-                ExternalAppState.Process = null;
-            }
-
-            _winEventHooks.ForEach(delegate(IntPtr hook) { PInvoke.UnhookWinEvent(hook); });
+            if (_externalApp != null)
+                _externalApp.ProcessExited -= ExternalApp_ProcessExited;
+            
+            _winEventHooks.ForEach(delegate (IntPtr hook) { PInvoke.UnhookWinEvent(new HWINEVENTHOOK(hook)); });
             _winEventHooks.Clear();
             _winEventProcs.Clear();
         }
 
         base.Dispose(disposing);
     }
+
+    /// <inheritdoc />
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        _ownerHandle = new HWND(Handle);
+    }
+
+    public void Start(ExternalAppConfiguration configuration)
+    {
+        var taskFactory = new TaskFactory();
+        taskFactory.StartNew(() => StartAsync(configuration));
+    }
+
+    public void CloseApplication()
+    {
+        _externalApp?.CloseApplication();
+    }
+
+    private async Task StartAsync(ExternalAppConfiguration configuration)
+    {
+        _externalApp = new ExternalApp(configuration, Logger ?? NullLogger.Instance);
+        _externalApp.ProcessExited += ExternalApp_ProcessExited;
+        var result = await _externalApp.StartAsync();
+
+        if (result.Success)
+        {
+            Invoke(StartedSuccessful);
+        }
+        else
+        {
+            // TODO: RaiseApplicationClosed
+        }
+    }
+
+    private void ExternalApp_ProcessExited(object sender, EventArgs e)
+    {
+        RaiseApplicationClosed();
+    }
+
+    private void StartedSuccessful()
+    {
+        var result = new NativeResult(false);
+        if (!_externalApp.Configuration.StartExternal)
+        {
+            try
+            {
+                result = EmbedApplication();
+            }
+            catch (Exception ex)
+            {
+                Logger?.LogWarning(ex, "Embedding application failed");
+            }
+        }
+
+        if (!result.Success)
+            Logger?.LogWarning(result.Exception, "StartApplicationInternalAsync raised an error");
+
+        SetupHooks();
+        SetWindowPosition();
+        RaiseApplicationStarted();
+    }
     
-            public void CloseApplication(bool killProcess = false)
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <returns></returns>
+    public NativeResult EmbedApplication()
+    {
+        if (!_externalApp.HasWindow)
         {
-            if (!ExternalAppState.HasWindow || !ExternalAppState.IsRunning)
-                return;
-
-            try
-            {
-                if (killProcess)
-                {
-                    ExternalAppState.Process?.Kill();
-                }
-                else
-                {
-                    // for now we just kill the process
-                    if (!ExternalAppState.Process?.CloseMainWindow() ?? true)
-                    {
-                        ExternalAppState.Process?.Kill();
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                // Logger.LogWarning(
-                //     "Closing external application failed.",
-                //     exception: ex);
-            }
-            finally
-            {
-                ExternalAppState.ExecutionState = ExecutionState.Stopped;
-            }
+            // process not found or application has been closed
+            RaiseApplicationClosed();
+            return new NativeResult(false);
         }
 
-        public async Task<NativeResult> EmbedApplicationAsync()
-        {
-            if (!ExternalAppState.HasWindow)
-            {
-                // process not found or application has been closed
-                RaiseApplicationClosed();
-                return new NativeResult(false);
-            }
-
-            var result = await SetParentAsync(Handle); 
-            if (!result.Success)
-                return result;
-
-            SetWindowPosition();
-            FocusApplication(false);
-            return new NativeResult(true);
-        }
-
-        public void FocusApplication(bool externalWindowActivation)
-        {
-            OnFocusApplication(externalWindowActivation);
-        }
-
-        public void FreeApplication()
-        {
-            if (!ExternalAppState.HasWindow)
-                return;
-
-        var handle = ExternalAppState.HWND;
-            PInvoke.SetParent(handle, new Windows.Win32.Foundation.HWND(IntPtr.Zero));
-            PInvoke.SetWindowLong(handle, Windows.Win32.UI.WindowsAndMessaging.WINDOW_LONG_PTR_INDEX.GWL_STYLE, (int)_originalGwlStyle);
-            ExternalAppState.IsEmbedded = false;
-        }
-
-        public Bitmap? GetWindowScreenshot()
-        {
-            if (!ExternalAppState.HasWindow)
-                return null;
-            
-            PInvoke.GetWindowRect(ExternalAppState.HWND, out var rect);
-
-            if (rect.Right == 0 || rect.Bottom == 0)
-                return null;
-
-            var bmp = new Bitmap(rect.Right, rect.Bottom, PixelFormat.Format32bppArgb);
-            var gfxBmp = Graphics.FromImage(bmp);
-            var hdcBitmap = gfxBmp.GetHdc();
-
-            PInvoke.PrintWindow(ExternalAppState.WindowHandle, hdcBitmap, 0);
-
-            gfxBmp.ReleaseHdc(hdcBitmap);
-            gfxBmp.Dispose();
-
-            return bmp;
-        }
-
-        public void MaximizeApplication()
-        {
-            if (ExternalAppState.HasWindow)
-            {
-                PInvoke.ShowWindow(ExternalAppState.WindowHandle, User32.SW_SHOWMAXIMIZED);
-            }
-        }
-
-        public void SetWindowPosition()
-        {
-            if (Disposing || IsDisposed)
-                return;
-
-            try
-            {
-                if (ExternalAppState.IsEmbedded)
-                {
-                    SetWindowPosition(0, 0, Width, Height);
-                }
-                else
-                {
-                    PInvoke.ShowWindow(ExternalAppState.WindowHandle, User32.SW_SHOWDEFAULT);
-                    SetWindowPosition(new Rectangle(
-                        PointToScreen(new Point(Left - SystemInformation.Border3DSize.Width, Top)).X,
-                        PointToScreen(new Point(Left - SystemInformation.Border3DSize.Width, Top)).Y,
-                        Width,
-                        Height));
-                }
-            }
-            catch (Exception ex)
-            {
-                //Logger.LogWarning("Cannot set the window position.", exception: ex);
-            }
-        }
-
-        public void SetWindowPosition(Rectangle rectangle)
-        {
-            SetWindowPosition(rectangle.X, rectangle.Y, rectangle.Width, rectangle.Height);
-        }
-
-        public void SetWindowPosition(int x, int y, int width, int height)
-        {
-            if (!ExternalAppState.HasWindow)
-                return;
-
-            // the coordinates of the client area rectangle
-            var rect = new PInvoke.RECT(x, y, x + width, y + height);
-
-            // let windows calculate the best position for the window when we want to have the client rect at those coordinates
-            PInvoke.AdjustWindowRectEx(ref rect, (uint)_embeddedGwlStyle, false, 0);
-
-            // let's move the window
-            PInvoke.MoveWindow(
-                ExternalAppState.WindowHandle,
-                rect.Left,
-                rect.Top,
-                rect.Right - rect.Left,
-                rect.Bottom - rect.Top,
-                true);
-        }
-
-        public async Task<NativeResult> StartApplicationAsync(ExternalAppConfig externalAppConfig)
-        {
-            if (ExternalAppState.ExecutionState != ExecutionState.Stopped)
-                throw new InvalidOperationException("Cannot start application because it is already starting or running.");
-
-            ExternalAppState.ExecutionState = ExecutionState.Starting;
-            var result = await StartApplicationInternalAsync(externalAppConfig);
-            ExternalAppState.ExecutionState = result.Success 
-                ? ExecutionState.Running 
-                : ExecutionState.Stopped;
+        var result = SetParent(_ownerHandle);
+        if (!result.Success)
             return result;
-        }
 
-        protected virtual void OnApplicationActivated()
-        {
-            
-        }
-        
-        protected virtual void OnApplicationClosed()
-        {
-        }
+        SetWindowPosition();
+        FocusApplication(false);
+        return new NativeResult(true);
+    }
 
-        protected virtual void OnApplicationStarted()
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="externalWindowActivation"></param>
+    public void FocusApplication(bool externalWindowActivation)
+    {
+        OnFocusApplication(externalWindowActivation);
+    }
+
+    /// <summary>
+    /// 
+    /// </summary>
+    public void FreeApplication()
+    {
+        if (!_externalApp.HasWindow)
+            return;
+
+        var handle = _externalApp.WindowHandle;
+        PInvoke.SetParent(handle, new HWND(IntPtr.Zero));
+        PInvoke.SetWindowLong(handle, Windows.Win32.UI.WindowsAndMessaging.WINDOW_LONG_PTR_INDEX.GWL_STYLE, (int)_originalGwlStyle);
+        _externalApp.IsEmbedded = false;
+    }
+
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <returns></returns>
+    public Bitmap? GetWindowScreenshot()
+    {
+        if (!_externalApp.HasWindow)
+            return null;
+
+        PInvoke.GetWindowRect(_externalApp.WindowHandle, out var rect);
+
+        if (rect.right == 0 || rect.bottom == 0)
+            return null;
+
+        var bmp = new Bitmap(rect.right, rect.bottom, PixelFormat.Format32bppArgb);
+        var gfxBmp = Graphics.FromImage(bmp);
+        var hdcBitmap = gfxBmp.GetHdc();
+        var hdc = new Windows.Win32.Graphics.Gdi.HDC(hdcBitmap);
+
+        PInvoke.PrintWindow(_externalApp.WindowHandle, hdc, Windows.Win32.Storage.Xps.PRINT_WINDOW_FLAGS.PW_CLIENTONLY);
+
+        gfxBmp.ReleaseHdc(hdcBitmap);
+        gfxBmp.Dispose();
+
+        return bmp;
+    }
+
+    /// <summary>
+    /// 
+    /// </summary>
+    public void MaximizeApplication()
+    {
+        if (_externalApp.HasWindow)
         {
+            PInvoke.ShowWindow(_externalApp.WindowHandle, Windows.Win32.UI.WindowsAndMessaging.SHOW_WINDOW_CMD.SW_SHOWMAXIMIZED);
         }
+    }
 
-        protected virtual void OnWindowTitleChanged()
+    /// <summary>
+    /// 
+    /// </summary>
+    public void SetWindowPosition()
+    {
+        if (Disposing || IsDisposed)
+            return;
+
+        try
         {
-        }
-
-        protected virtual void OnFocusApplication(bool externalWindowActivation)
-        {
-            if (!ExternalAppState.HasWindow)
-                return;
-
-            if (ExternalAppState.IsEmbedded || externalWindowActivation)
+            if (_externalApp.IsEmbedded)
             {
-                Focus();
-                PInvoke.SetForegroundWindow(ExternalAppState.WindowHandle);
-                PInvoke.SetFocus(ExternalAppState.WindowHandle);
+                SetWindowPosition(0, 0, Width, Height);
+            }
+            else
+            {
+                PInvoke.ShowWindow(_externalApp.WindowHandle, Windows.Win32.UI.WindowsAndMessaging.SHOW_WINDOW_CMD.SW_SHOWDEFAULT);
+                SetWindowPosition(new Rectangle(
+                    PointToScreen(new Point(Left - SystemInformation.Border3DSize.Width, Top)).X,
+                    PointToScreen(new Point(Left - SystemInformation.Border3DSize.Width, Top)).Y,
+                    Width,
+                    Height));
             }
         }
-
-        private void RaiseApplicationActivated()
+        catch (Exception ex)
         {
-            LogVerboseInDebugOnly(nameof(RaiseApplicationActivated));
-            OnApplicationActivated();
-            ApplicationActivated?.Invoke(this, EventArgs.Empty);
+            Logger?.LogWarning(ex, "Cannot set the window position");
         }
-        
-        private void RaiseApplicationClosed()
-        {
-            LogVerboseInDebugOnly(nameof(RaiseApplicationClosed));
-            OnApplicationClosed();
-            ApplicationClosed?.Invoke(this, EventArgs.Empty);
-        }
+    }
 
-        private void RaiseApplicationStarted()
-        {
-            LogVerboseInDebugOnly(nameof(RaiseApplicationStarted));
-            OnApplicationStarted();
-            ApplicationStarted?.Invoke(this, EventArgs.Empty);
-        }
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="rectangle"></param>
+    public void SetWindowPosition(Rectangle rectangle)
+    {
+        SetWindowPosition(rectangle.X, rectangle.Y, rectangle.Width, rectangle.Height);
+    }
 
-        private void RaiseWindowTitleChanged()
-        {
-            LogVerboseInDebugOnly(nameof(RaiseWindowTitleChanged));
-            OnWindowTitleChanged();
-            WindowTitleChanged?.Invoke(this, EventArgs.Empty);
-        }
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="x"></param>
+    /// <param name="y"></param>
+    /// <param name="width"></param>
+    /// <param name="height"></param>
+    public void SetWindowPosition(int x, int y, int width, int height)
+    {
+        if (!_externalApp.HasWindow)
+            return;
 
-        protected override void OnResize(EventArgs e)
+        // the coordinates of the client area rectangle
+        var rect = new RECT
         {
-            base.OnResize(e);
-            SetWindowPosition();
-        }
+            left = x,
+            top = y,
+            right = x + width,
+            bottom = y + height
+        };
 
-        protected override void WndProc(ref Message m)
+
+        // let windows calculate the best position for the window when we want to have the client rect at those coordinates
+        PInvoke.AdjustWindowRectEx(ref rect, _embeddedGwlStyle, false, Windows.Win32.UI.WindowsAndMessaging.WINDOW_EX_STYLE.WS_EX_LEFT);
+
+        // let's move the window
+        PInvoke.MoveWindow(
+            _externalApp.WindowHandle,
+            rect.left,
+            rect.top,
+            rect.right - rect.left,
+            rect.bottom - rect.top,
+            true);
+    }
+
+    /// <summary>
+    /// 
+    /// </summary>
+    protected virtual void OnApplicationActivated()
+    {
+
+    }
+
+    /// <summary>
+    /// 
+    /// </summary>
+    protected virtual void OnApplicationClosed()
+    {
+    }
+
+    /// <summary>
+    /// 
+    /// </summary>
+    protected virtual void OnApplicationStarted()
+    {
+    }
+
+    /// <summary>
+    /// 
+    /// </summary>
+    protected virtual void OnWindowTitleChanged()
+    {
+    }
+
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="externalWindowActivation"></param>
+    protected virtual void OnFocusApplication(bool externalWindowActivation)
+    {
+        if (!_externalApp.HasWindow)
+            return;
+
+        if (_externalApp.IsEmbedded || externalWindowActivation)
         {
-            switch (m.Msg)
-            {
-                case User32.WM_MOUSEACTIVATE:
-                case User32.WM_LBUTTONDOWN:
-                case User32.WM_MDIACTIVATE:
-                case User32.WM_SETFOCUS:
-                    // notify host application that the external app area has been clicked
-                    RaiseApplicationActivated();
-                    // make sure the external application gets the input focus
-                    FocusApplication(false);
-                    break;
-            }
-            base.WndProc(ref m);
+            Focus();
+            PInvoke.SetForegroundWindow(_externalApp.WindowHandle);
+            PInvoke.SetFocus(_externalApp.WindowHandle);
         }
+    }
 
-        private void AppProcess_Exited(object? sender, EventArgs e)
+    private void RaiseApplicationActivated()
+    {
+        LogVerboseInDebugOnly(nameof(RaiseApplicationActivated));
+        OnApplicationActivated();
+        ApplicationActivated?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void RaiseApplicationClosed()
+    {
+        if (InvokeRequired)
+        {
+            Invoke(RaiseApplicationClosed);
+            return;
+        }
+        LogVerboseInDebugOnly(nameof(RaiseApplicationClosed));
+        OnApplicationClosed();
+        ApplicationClosed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void RaiseApplicationStarted()
+    {
+        LogVerboseInDebugOnly(nameof(RaiseApplicationStarted));
+        OnApplicationStarted();
+        ApplicationStarted?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void RaiseWindowTitleChanged()
+    {
+        LogVerboseInDebugOnly(nameof(RaiseWindowTitleChanged));
+        OnWindowTitleChanged();
+        WindowTitleChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <inheritdoc />
+    protected override void OnResize(EventArgs e)
+    {
+        base.OnResize(e);
+        SetWindowPosition();
+    }
+
+    /// <inheritdoc />
+    protected override void WndProc(ref Message m)
+    {
+        switch ((uint)m.Msg)
+        {
+            case PInvoke.WM_MOUSEACTIVATE:
+            case PInvoke.WM_LBUTTONDOWN:
+            case PInvoke.WM_MDIACTIVATE:
+            case PInvoke.WM_SETFOCUS:
+                // notify host application that the external app area has been clicked
+                RaiseApplicationActivated();
+                // make sure the external application gets the input focus
+                FocusApplication(false);
+                break;
+        }
+        base.WndProc(ref m);
+    }
+
+    private NativeResult SetParent(HWND parentHandle)
+    {
+        var result = new NativeResult(false);
+        var retry = 0;
+
+        // remember the original window style (currently not in use because application of old style doesn't always work)
+        _originalGwlStyle = (Windows.Win32.UI.WindowsAndMessaging.WINDOW_STYLE)PInvoke.GetWindowLong(_externalApp.WindowHandle, Windows.Win32.UI.WindowsAndMessaging.WINDOW_LONG_PTR_INDEX.GWL_STYLE);
+        // setting these styles don't work because keyboard input is broken afterwards
+        var newStyle = 
+            _originalGwlStyle & 
+            ~(Windows.Win32.UI.WindowsAndMessaging.WINDOW_STYLE.WS_GROUP | Windows.Win32.UI.WindowsAndMessaging.WINDOW_STYLE.WS_TABSTOP) 
+            | Windows.Win32.UI.WindowsAndMessaging.WINDOW_STYLE.WS_CHILD;
+        PInvoke.SetWindowLong(_externalApp.WindowHandle, Windows.Win32.UI.WindowsAndMessaging.WINDOW_LONG_PTR_INDEX.GWL_STYLE, (int)newStyle);
+
+        // this needs to run asynchronously to not block the UI thread
+        do
         {
             try
             {
-                Invoke(RaiseApplicationClosed);
+                result = SetParentInternal(parentHandle);
             }
             catch (Exception ex)
             {
-                //Logger.LogWarning(exception: ex);
+                result = new NativeResult(false, ex);
+                Logger?.LogDebug(ex, "SetParentInternal failed");
             }
-        }
 
-                private async Task<NativeResult> FindProcessAsync(ExternalAppConfig externalAppConfig)
+            if (result.Success || retry > 10)
+                break;
+
+            retry++;
+            Thread.Sleep(100);
+        } while (true);
+
+        if (result.Success)
         {
-            if (string.IsNullOrWhiteSpace(externalAppConfig.ProcessNameToTrack) &&
-                string.IsNullOrWhiteSpace(externalAppConfig.CommandLineMatchString))
-            {
-                // no need to search for anything, bail...
-                return new NativeResult(true);
-            }
-
-            var commandFound = false;
-
-            // setup WMI
-            var wmiQuery = "SELECT ProcessId, CommandLine FROM Win32_Process";
-            if (!string.IsNullOrWhiteSpace(externalAppConfig.ProcessNameToTrack))
-                wmiQuery += $" WHERE Name='{externalAppConfig.ProcessNameToTrack}'";
-            var searcher = new ManagementObjectSearcher(wmiQuery);
-            //Logger.LogDebug(details: $"WMI query to execute: {wmiQuery}");
-
-            var debugInfoStringBuilder = new StringBuilder();
-            debugInfoStringBuilder.AppendLine($"Process name to track: {externalAppConfig.ProcessNameToTrack}");
-            debugInfoStringBuilder.AppendLine($"Command line fragment to look for: {externalAppConfig.CommandLineMatchString}");
-
-            // assign local variables to prevent leaking memory by capturing members in async methods
-            var minWaitTimeInMs = externalAppConfig.MinWaitTime * 1000;
-            var maxWaitTime = externalAppConfig.MaxWaitTime;
-            var commandLineMatchString = externalAppConfig.CommandLineMatchString;
-
-            var currentProcess = ExternalAppState.Process;
-            var windowHandle = ExternalAppState.WindowHandle;
-
-            await System.Threading.Tasks.Task.Run(() =>
-            {
-                // first, wait the MinWaitTime, before we look for a process or command line
-                Thread.Sleep(minWaitTimeInMs);
-                var tryCount = 0;
-                while (true)
-                {
-                    foreach (var managementBaseObject in searcher.Get())
-                    {
-                        if (managementBaseObject is not ManagementObject wmiWin32Process)
-                            continue;
-
-                        var commandLine = wmiWin32Process["CommandLine"] != null
-                            ? wmiWin32Process["CommandLine"].ToString()
-                            : string.Empty;
-                        var processIdString = wmiWin32Process["ProcessId"] != null
-                            ? wmiWin32Process["ProcessId"].ToString()
-                            : string.Empty;
-
-                        // check if we can parse the process id and if we have a valid command line
-                        if (!int.TryParse(processIdString, out var processId))
-                            continue;
-
-                        if (string.IsNullOrWhiteSpace(commandLine) || processId <= -1)
-                            continue;
-
-                        debugInfoStringBuilder.AppendLine($"Process: {processIdString}, Command Line: {commandLine}");
-
-                        // if no command line match string has been provided, take the process we found
-                        // or in case a command line match string has been provided, check if it matches
-                        if (string.IsNullOrWhiteSpace(commandLineMatchString) ||
-                            commandLine.ToLower().Contains(commandLineMatchString.ToLower()))
-                        {
-                            if (currentProcess != null)
-                                currentProcess.Exited -= AppProcess_Exited;
-                            currentProcess = Process.GetProcessById(processId);
-                            windowHandle = currentProcess.MainWindowHandle;
-                            commandFound = true;
-                            break;
-                        }
-                    }
-
-                    tryCount++;
-                    Thread.Sleep(250);
-
-                    if (commandFound || tryCount >= maxWaitTime * 4)
-                        break;
-                }
-            });
-
-            ExternalAppState.Process = currentProcess;
-            ExternalAppState.WindowHandle = windowHandle;
-
-            // Logger<>.LogDebug(
-            //     commandFound
-            //         ? $"FindProcessAsync succeeded."
-            //         : $"FindProcessAsync failed.",
-            //     details: debugInfoStringBuilder.ToString());
-
-            return commandFound 
-                ? new NativeResult(true) 
-                : new NativeResult(false);
+            _embeddedGwlStyle = (Windows.Win32.UI.WindowsAndMessaging.WINDOW_STYLE)PInvoke.GetWindowLong(_externalApp.WindowHandle, Windows.Win32.UI.WindowsAndMessaging.WINDOW_LONG_PTR_INDEX.GWL_STYLE);
         }
 
-        private async Task<bool> FindWindowTitleAsync(ExternalAppConfig externalAppConfig)
+        _externalApp.IsEmbedded = result.Success;
+        return result;
+    }
+
+    private NativeResult SetParentInternal(HWND parentHandle)
+    {
+        // BeginInvoke is needed here!
+        // When not executed at the end of the message pump, the SetParent call always returns '5' (Access Denied)
+        var asyncResult = BeginInvoke(new MethodInvoker(() =>
         {
-            Thread.Sleep(externalAppConfig.MinWaitTime * 1000);
+            // https://devblogs.microsoft.com/oldnewthing/?p=4683
+            PInvoke.SetParent(_externalApp.WindowHandle, parentHandle);
+        }));
 
-            var tryCountMatch = 0;
-            var titleMatches = 0;
-            var windowFound = false;
+        // we need to wait for the async code to finish and get the last win32 error code
+        EndInvoke(asyncResult);
 
-            var maxWaitTime = externalAppConfig.MaxWaitTime;
-            var windowTitleMatch = externalAppConfig.WindowTitleMatch;
-            var windowTitleMatchSkip = externalAppConfig.WindowTitleMatchSkip;
-            var windowHandle = ExternalAppState.WindowHandle;
-            var currentProcess = ExternalAppState.Process;
+        var lastWin32Exception = new Win32Exception();
+        var success = lastWin32Exception.NativeErrorCode == 0;
+        Logger?.LogDebug(lastWin32Exception, "SetParentInternal success: {Success}, Error Code: {NativeErrorCode}", success, lastWin32Exception.NativeErrorCode);
+        return success
+            ? new NativeResult(true)
+            : new NativeResult(false, lastWin32Exception);
+    }
 
-            if (currentProcess == null)
-                return false;
+    private void SetupHooks()
+    {
+        if (!_externalApp.IsRunning)
+            return;
 
-            await System.Threading.Tasks.Task.Run(() =>
-            {
-                do
-                {
-                    if (tryCountMatch >= maxWaitTime * 4)
-                        break;
+        var winEventProc = new WINEVENTPROC(WinEventProc);
+        // always add the delegate to the _winEventProcs list
+        // otherwise GC will dump this delegate and the hook fails
+        _winEventProcs.Add(winEventProc);
+        var eventType = PInvoke.EVENT_OBJECT_NAMECHANGE;
 
-                    Thread.Sleep(250);
+        var hook = PInvoke.SetWinEventHook(
+            eventType,
+            eventType,
+            new HINSTANCE(IntPtr.Zero),
+            WinEventProc,
+            (uint)_externalApp.Process!.Id,
+            0,
+            PInvoke.WINEVENT_OUTOFCONTEXT);
+        _winEventHooks.Add(hook);
+    }
 
-                    foreach (var window in DesktopWindow.GetDesktopWindows())
-                    {
-                        if (window.ProcessId != currentProcess.Id)
-                            continue;
 
-                        // title matches
-                        if (!window.Title.Contains(windowTitleMatch))
-                            continue;
+    // ReSharper disable once IdentifierTypo
+    private void WinEventProc(HWINEVENTHOOK hWinEventHook, uint eventType, HWND hWnd, int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
+    {
+        LogVerboseInDebugOnly($"WinEventProc: EventType: {eventType}, Window Handle: {hWnd}, idObject: {idObject}, idChild: {idChild}");
 
-                        // we are still on the same window
-                        if (windowTitleMatchSkip > 0 && windowHandle == window.Handle)
-                            continue;
-
-                        // if window title matches should be skipped
-                        if (titleMatches <= windowTitleMatchSkip)
-                        {
-                            titleMatches++;
-                            break;
-                        }
-
-                        // remember the current window handle
-                        windowHandle = window.Handle;
-
-                        // window finally found
-                        windowFound = true;
-                        break;
-                    }
-
-                    tryCountMatch++;
-                } while (currentProcess.HasExited == false && !windowFound);
-            });
-
-            ExternalAppState.WindowHandle = windowHandle;
-
-            return windowFound;
-        }
-
-        private IntPtr GetWindowHandleFromPicker()
+        if (_externalApp.WindowHandle != hWnd)
         {
-            var windowHandle = IntPtr.Zero;
-            var singleForm = new PropertyDialog
-            {
-                Text = "Window &Picker...".TLL().StripAccelerator(),
-                HeaderImageSvg = ImageCache.GetSvgImageLarge(AppResources.SvgIcons.ActionOpenApplicationFolder),
-                HeaderText = "External application window not found".TLL(),
-                HeaderSubText = "Can the Window be found in the list below?".TLL(),
-                NavigationVisible = false,
-                ButtonBackNextVisible = false
-            };
-
-            singleForm.AddPropertyPage(
-                DiContainer.Resolve<Func<WindowPickerPage>>(),
-                WindowPickerPage.GetPanelName(),
-                string.Empty,
-                WindowPickerPage.GetTreeSvg());
-            singleForm.ActivatePropertyPage(WindowPickerPage.GetPanelName());
-            var dialogResult = singleForm.ShowDialog(AppInfo.MainWindow);
-
-            if (singleForm.ObjectToEdit is Tuple<string, string, string, string, IntPtr> pickedWindow)
-                windowHandle = pickedWindow.Item5;
-
-            if (dialogResult != DialogResult.OK || windowHandle == IntPtr.Zero)
-                return IntPtr.Zero;
-
-            return windowHandle;
+            LogVerboseInDebugOnly($"WinEventProc: exiting because WindowHandle ({_externalApp.WindowHandle}) != hWnd ({hWnd})");
+            return;
         }
 
-        private async Task<NativeResult> SetParentAsync(IntPtr parentHandle)
+        switch (eventType)
         {
-            var result = new NativeResult(false);
-            var retry = 0;
-
-            // remember the original window style (currently not in use because application of old style doesn't always work)
-            _originalGwlStyle = User32.GetWindowLong(ExternalAppState.WindowHandle, User32.GWL_STYLE);
-            // setting these styles don't work because keyboard input is broken afterwards
-            var newStyle = _originalGwlStyle & ~(User32.WS_GROUP|User32.WS_TABSTOP) | User32.WS_CHILD;
-            User32.SetWindowLong(ExternalAppState.WindowHandle, User32.GWL_STYLE, newStyle);
-
-            //var logger = Logger;
-
-            // this needs to run asynchronously to not block the UI thread
-            await System.Threading.Tasks.Task.Run(() =>
-            {
-                do
-                {
-                    try
-                    {
-                        result = SetParentInternal(parentHandle);
-                    }
-                    catch (Exception ex)
-                    {
-                        result = new NativeResult(false, ex);
-                        //logger.LogDebug("SetParentInternal failed.", exception: ex);
-                    }
-
-                    if (result.Success || retry > 10)
-                        break;
-
-                    retry++;
-                    Thread.Sleep(100);
-                } while (true);
-            });
-
-            if (result.Success)
-            {
-                _embeddedGwlStyle = PInvoke.GetWindowLong(ExternalAppState.WindowHandle, User32.GWL_STYLE);
-            }
-
-            ExternalAppState.IsEmbedded = result.Success;
-            return result;
+            case PInvoke.EVENT_OBJECT_NAMECHANGE:
+                LogVerboseInDebugOnly($"WinEventProc: EVENT_OBJECT_NAMECHANGE: {_externalApp.GetWindowTitle()}");
+                Invoke(RaiseWindowTitleChanged);
+                break;
         }
+    }
 
-        private NativeResult SetParentInternal(IntPtr parentHandle)
-        {
-            var windowHandle = ExternalAppState.WindowHandle;
-
-            // BeginInvoke is needed here!
-            // When not executed at the end of the message pump, the SetParent call always returns '5' (Access Denied)
-            var asyncResult = BeginInvoke(new MethodInvoker(() =>
-            {
-                // https://devblogs.microsoft.com/oldnewthing/?p=4683
-                PInvoke.SetParent(windowHandle, parentHandle);
-            }));
-
-            // we need to wait for the async code to finish and get the last win32 error code
-            EndInvoke(asyncResult);
-            
-            var lastWin32Exception = new Win32Exception();
-            var success = lastWin32Exception.NativeErrorCode == 0;
-            //Logger.LogDebug($"SetParentInternal success: {success}, Error Code: {lastWin32Exception.NativeErrorCode}");
-            return success 
-                ? new NativeResult(true)
-                : new NativeResult(false, lastWin32Exception);
-        }
-
-        private void SetupHooks()
-        {
-            if (!ExternalAppState.IsRunning)
-                return;
-
-            var winEventProc = new User32.WinEventDelegate(WinEventProc);
-            // always add the delegate to the _winEventProcs list
-            // otherwise GC will dump this delegate and the hook fails
-            _winEventProcs.Add(winEventProc);
-            var eventType = (uint)User32.WinEvents.EVENT_OBJECT_NAMECHANGE;
-            _winEventHooks.Add(
-                PInvoke.SetWinEventHook(
-                    eventType, 
-                    eventType, 
-                    IntPtr.Zero, 
-                    winEventProc, 
-                    (uint)ExternalAppState.Process!.Id, 
-                    0, 
-                    User32.WINEVENT_OUTOFCONTEXT));
-        }
-
-        private async Task<NativeResult> StartApplicationInternalAsync(ExternalAppConfig externalAppConfig)
-        {
-            #region --- Start Process (if needed) ---
-            var result = await StartProcessAsync(externalAppConfig);
-            if (!result.Success)
-                return result;
-            #endregion
-
-            #region --- Search for a specific process or command line (if configured) ---
-            result = await FindProcessAsync(externalAppConfig);
-            // if (!result.Success)
-            //     Logger.LogWarning("FindProcessAsync raised an error.", exception: result.Exception);
-
-            result = new NativeResult(false);
-            #endregion
-
-            #region --- Search for a specific window title (if configured) ---
-            if (!string.IsNullOrEmpty(externalAppConfig.WindowTitleMatch))
-            {
-                var windowFound = await FindWindowTitleAsync(externalAppConfig);
-                if (!windowFound)
-                {
-                    ExternalAppState.WindowHandle = GetWindowHandleFromPicker();
-                    if (!ExternalAppState.HasWindow)
-                    {
-                        RaiseApplicationClosed();
-                        return new NativeResult(false);
-                    }
-                }
-            }
-            #endregion
-
-            if (ExternalAppState.Process != null)
-            {
-                ExternalAppState.Process.EnableRaisingEvents = true;
-                ExternalAppState.Process.Exited += AppProcess_Exited;
-            }
-
-            if (!externalAppConfig.StartExternal)
-            {
-                try
-                {
-                    result = await EmbedApplicationAsync();
-                }
-                catch (Exception ex)
-                {
-                    //Logger.LogWarning("Embedding application failed.", exception: ex);
-                }
-            }
-
-            if (!result.Success)
-                //Logger.LogWarning("StartApplicationInternalAsync raised an error.", exception: result.Exception);
-            
-            SetupHooks();
-            SetWindowPosition();
-            RaiseApplicationStarted();
-
-            return new NativeResult(true);
-        }
-
-        private async Task<NativeResult> StartProcessAsync(ExternalAppConfig externalAppConfig)
-        {
-            if (externalAppConfig.UseExistingProcess)
-                return new NativeResult(true);
-
-            #region --- Prepare Process for Execution and Start ---
-
-            try
-            {
-                ExternalAppState.StartProcess(externalAppConfig);
-            }
-            catch (Exception ex)
-            {
-                return new NativeResult(false, ex);
-            }
-
-            if (ExternalAppState.Process == null)
-            {
-                RaiseApplicationClosed();
-                return new NativeResult(false);
-            }
-
-            try
-            {
-                ExternalAppState.Process.WaitForInputIdle();
-            }
-            catch
-            {
-                // ignore: PowerShell doesn't allow to wait for input idle
-            }
-
-            if (!ExternalAppState.IsRunning)
-            {
-                RaiseApplicationClosed();
-                return new NativeResult(false, new Exception("The process is not running anymore or does not have a main window handle."));
-            }
-
-            #endregion
-
-            #region --- Wait for the App to be started, try to get the main window handle ---
-
-            // depending on the configuration, we don't always need the main window handle of the process we started
-
-            var maxWaitTime = externalAppConfig.MaxWaitTime;
-            var currentProcess = ExternalAppState.Process;
-
-            Exception? lastException = null;
-            
-            await System.Threading.Tasks.Task.Run(() =>
-            {
-                var tryCount = 0;
-                var mainWindowHandle = IntPtr.Zero;
-                var mainWindowTitle = "Default IME";
-                do
-                {
-                    if (tryCount >= maxWaitTime * 4)
-                        break;
-
-                    currentProcess.Refresh();
-
-                    Thread.Sleep(100);
-
-                    tryCount++;
-
-                    try
-                    {
-                        mainWindowHandle = currentProcess.MainWindowHandle;
-                        mainWindowTitle = currentProcess.MainWindowTitle;
-                    }
-                    catch (Exception ex)
-                    {
-                        lastException = ex;
-                    }
-                } while (!currentProcess.HasExited &&
-                         (mainWindowHandle == IntPtr.Zero || mainWindowTitle == "Default IME"));
-            });
-
-            ExternalAppState.Process = currentProcess;
-
-            if (!ExternalAppState.IsRunning || lastException != null)
-            {
-                RaiseApplicationClosed();
-                return new NativeResult(false, lastException);
-            }
-
-            ExternalAppState.WindowHandle = ExternalAppState.Process.MainWindowHandle;
-
-            #endregion
-
-            return new NativeResult(true);
-        }
-
-        // ReSharper disable once IdentifierTypo
-        private void WinEventProc(IntPtr hWinEventHook, uint eventType, IntPtr hWnd, int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
-        {
-            LogVerboseInDebugOnly($"WinEventProc: EventType: {eventType}, Window Handle: {hWnd}, idObject: {idObject}, idChild: {idChild}");
-
-            if (ExternalAppState.WindowHandle != hWnd)
-            {
-                LogVerboseInDebugOnly($"WinEventProc: exiting because WindowHandle ({ExternalAppState.WindowHandle}) != hWnd ({hWnd})");
-                return;
-            }
-            
-            switch (eventType)
-            {
-                case (uint)User32.WinEvents.EVENT_OBJECT_NAMECHANGE:
-                    LogVerboseInDebugOnly($"WinEventProc: EVENT_OBJECT_NAMECHANGE: {ExternalAppState.GetWindowTitle()}");
-                    InvokeIfRequired(RaiseWindowTitleChanged);
-                    break;
-            }
-        }
-
-        private void LogVerboseInDebugOnly(string message, [CallerMemberName] string memberName = "", [CallerFilePath] string sourceFilePath = "", [CallerLineNumber] int sourceLineNumber = 0)
-        {
-            //Logger.LogVerbose(message, null, null, null, memberName, sourceFilePath, sourceLineNumber);
-            Console.WriteLine(message);
-        }
+    private void LogVerboseInDebugOnly(string message, [CallerMemberName] string memberName = "", [CallerFilePath] string sourceFilePath = "", [CallerLineNumber] int sourceLineNumber = 0)
+    {
+        #if DEBUG
+        Debug.WriteLine(message);
+        #endif
+    }
 }
