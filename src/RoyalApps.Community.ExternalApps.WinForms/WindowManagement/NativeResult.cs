@@ -10,20 +10,30 @@ public class NativeResult
     /// <summary>
     /// 
     /// </summary>
-    public Exception? Exception { get; set; }
+    public static readonly NativeResult Success = new(true);
+    
     /// <summary>
     /// 
     /// </summary>
-    public bool Success { get; set; }
+    public static NativeResult Fail(Exception? exception = null) => new(false, exception);
+    
+    /// <summary>
+    /// 
+    /// </summary>
+    public Exception? Exception { get; }
+    /// <summary>
+    /// 
+    /// </summary>
+    public bool Succeeded { get; }
 
     /// <summary>
     /// 
     /// </summary>
-    /// <param name="success"></param>
+    /// <param name="succeeded"></param>
     /// <param name="exception"></param>
-    public NativeResult(bool success, Exception? exception = null)
+    private NativeResult(bool succeeded, Exception? exception = null)
     {
-        Success = success;
+        Succeeded = succeeded;
         Exception = exception;
     }
 }

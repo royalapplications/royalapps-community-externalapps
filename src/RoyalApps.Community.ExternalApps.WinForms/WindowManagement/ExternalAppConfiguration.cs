@@ -1,5 +1,8 @@
 namespace RoyalApps.Community.ExternalApps.WinForms;
 
+/// <summary>
+/// 
+/// </summary>
 public class ExternalAppConfiguration
 {
     /// <summary>

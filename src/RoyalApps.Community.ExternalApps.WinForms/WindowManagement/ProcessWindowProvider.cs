@@ -1,6 +1,4 @@
 ﻿using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
-
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -13,12 +11,11 @@ namespace RoyalApps.Community.ExternalApps.WinForms.WindowManagement
 {
     internal class ProcessWindowProvider
     {
+        private readonly ILogger _logger;
 
-        private ILogger _logger;
-
-        public ProcessWindowProvider(ILogger? logger)
+        public ProcessWindowProvider(ILogger<ProcessWindowProvider> logger)
         {
-            _logger = logger ?? NullLogger.Instance;
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
         public IEnumerable<ProcessWindowInfo> GetProcessWindows()
@@ -27,9 +24,9 @@ namespace RoyalApps.Community.ExternalApps.WinForms.WindowManagement
             BOOL Filter(HWND hWnd, LPARAM lParam)
             {
                 var capLength = PInvoke.GetWindowTextLength(hWnd);
-                var pwstr = new PWSTR();
-                var nLength = PInvoke.GetWindowText(hWnd, pwstr, capLength);
-                var strTitle = pwstr.AsSpan().ToString();
+                var lpString = new PWSTR();
+                var nLength = PInvoke.GetWindowText(hWnd, lpString, capLength);
+                var strTitle = lpString.AsSpan().ToString();
 
                 if (!PInvoke.IsWindowVisible(hWnd) || string.IsNullOrEmpty(strTitle))
                     return true;
@@ -65,7 +62,7 @@ namespace RoyalApps.Community.ExternalApps.WinForms.WindowManagement
             return windows;
         }
 
-        private string GetProcessExe(Process process)
+        private string GetProcessExe(Process? process)
         {
             try
             {

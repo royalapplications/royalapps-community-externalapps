@@ -2,7 +2,6 @@ using System;
 using System.Diagnostics;
 using System.Management;
 using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
 using Windows.Win32;
 using Windows.Win32.Foundation;
@@ -10,24 +9,25 @@ using Microsoft.Extensions.Logging;
 
 namespace RoyalApps.Community.ExternalApps.WinForms.WindowManagement;
 
-public class ExternalApp : IDisposable
+internal sealed class ExternalApp : IDisposable
 {
-    private readonly ILogger _logger;
-    public ExternalAppConfiguration Configuration { get; }
+    private readonly ILoggerFactory _loggerFactory;
+    private readonly ILogger<ExternalApp> _logger;
     public ApplicationState ApplicationState { get; private set; } = ApplicationState.Stopped;
-    public Process? Process { get; set; }
-    public ProcessStartInfo? ProcessStartInfo { get; set; }
-    public HWND WindowHandle { get; set; }
-    public bool IsEmbedded { get; set; }
+    public ExternalAppConfiguration Configuration { get; }
     public bool HasWindow => WindowHandle.Value != IntPtr.Zero;
+    public bool IsEmbedded { get; set; }
     public bool IsRunning => Process is {HasExited: false};
+    public Process? Process { get; private set; }
+    public HWND WindowHandle { get; private set; }
+    public event EventHandler? ProcessExited;
 
-    public event EventHandler ProcessExited;
-    
-    public ExternalApp(ExternalAppConfiguration configuration, ILogger logger)
+    public ExternalApp(ExternalAppConfiguration configuration, ILoggerFactory loggerFactory)
     {
-        _logger = logger;
-        Configuration = configuration;
+        Configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+        _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
+        
+        _logger = loggerFactory.CreateLogger<ExternalApp>();
     }
 
     public void Dispose()
@@ -43,9 +43,10 @@ public class ExternalApp : IDisposable
 
         var result = await StartApplicationInternalAsync();
 
-        ApplicationState = result.Success
+        ApplicationState = result.Succeeded
             ? ApplicationState.Running
             : ApplicationState.Stopped;
+
         return result;
     }
 
@@ -54,7 +55,7 @@ public class ExternalApp : IDisposable
         #region --- Start Process (if needed) ---
 
         var result = await StartProcessAsync();
-        if (!result.Success)
+        if (!result.Succeeded)
             return result;
 
         #endregion
@@ -62,10 +63,8 @@ public class ExternalApp : IDisposable
         #region --- Search for a specific process or command line (if configured) ---
 
         result = await FindProcessAsync();
-        if (!result.Success)
+        if (!result.Succeeded)
             _logger.LogWarning(result.Exception, "FindProcessAsync raised an error");
-
-        result = new NativeResult(false);
 
         #endregion
 
@@ -80,26 +79,26 @@ public class ExternalApp : IDisposable
                 //ExternalAppState.WindowHandle = GetWindowHandleFromPicker();
                 if (!HasWindow)
                 {
-                    return new NativeResult(false);
+                    return NativeResult.Fail();
                 }
             }
         }
 
         #endregion
 
-        if (Process != null)
-        {
-            Process.EnableRaisingEvents = true;
-            Process.Exited += AppProcess_Exited;
-        }
+        if (Process == null)
+            return NativeResult.Fail();
 
-        return new NativeResult(true);
+        Process.EnableRaisingEvents = true;
+        Process.Exited += AppProcess_Exited;
+
+        return NativeResult.Success;
     }
 
     private async Task<NativeResult> StartProcessAsync()
     {
         if (Configuration.UseExistingProcess)
-            return new NativeResult(true);
+            return NativeResult.Success;
 
         #region --- Prepare Process for Execution and Start ---
 
@@ -109,12 +108,12 @@ public class ExternalApp : IDisposable
         }
         catch (Exception ex)
         {
-            return new NativeResult(false, ex);
+            return NativeResult.Fail(ex);
         }
 
         if (Process == null)
         {
-            return new NativeResult(false);
+            return NativeResult.Fail();
         }
 
         try
@@ -128,8 +127,7 @@ public class ExternalApp : IDisposable
 
         if (!IsRunning)
         {
-            return new NativeResult(false,
-                new Exception("The process is not running anymore or does not have a main window handle."));
+            return NativeResult.Fail(new Exception("The process is not running anymore or does not have a main window handle."));
         }
 
         #endregion
@@ -168,19 +166,19 @@ public class ExternalApp : IDisposable
 
         if (!IsRunning || lastException != null)
         {
-            return new NativeResult(false, lastException);
+            return NativeResult.Fail(lastException);
         }
 
         WindowHandle = new HWND(Process.MainWindowHandle);
 
         #endregion
 
-        return new NativeResult(true);
+        return NativeResult.Success;
     }
 
     private void StartProcess()
     {
-        ProcessStartInfo = new ProcessStartInfo(
+        var processStartInfo = new ProcessStartInfo(
             Configuration.Command ?? string.Empty,
             Configuration.Arguments ?? string.Empty)
         {
@@ -190,31 +188,33 @@ public class ExternalApp : IDisposable
             CreateNoWindow = Configuration.StartHidden &&
                              !Configuration.StartExternal,
             UseShellExecute = true,
-            WorkingDirectory = Configuration.WorkingDirectory,
+            WorkingDirectory = Configuration.WorkingDirectory ?? ".",
             LoadUserProfile = Configuration.LoadUserProfile
         };
 
         if (Configuration.RunElevated)
         {
-            ProcessStartInfo.UseShellExecute = true;
-            ProcessStartInfo.Verb = "runas";
+            processStartInfo.UseShellExecute = true;
+            processStartInfo.Verb = "runas";
         }
         else if (Configuration.UseCredentials)
         {
-            ProcessStartInfo.UseShellExecute = false;
-            ProcessStartInfo.Verb = "runas";
-            ProcessStartInfo.UserName = Configuration.Username;
-            ProcessStartInfo.Domain = Configuration.Domain;
-            ProcessStartInfo.Password = SecureStringExtensions.ConvertToSecureString(Configuration.Password);
+            processStartInfo.UseShellExecute = false;
+            processStartInfo.Verb = "runas";
+            if (Configuration.Username != null)
+                processStartInfo.UserName = Configuration.Username;
+            if (Configuration.Domain != null)
+                processStartInfo.Domain = Configuration.Domain;
+            if (Configuration.Password != null)
+                processStartInfo.Password = SecureStringExtensions.ConvertToSecureString(Configuration.Password);
         }
 
-        Process = Process.Start(ProcessStartInfo);
+        Process = Process.Start(processStartInfo);
     }
 
     /// <summary>
     /// 
     /// </summary>
-    /// <param name="killProcess"></param>
     public void CloseApplication()
     {
         if (!HasWindow || !IsRunning)
@@ -252,9 +252,9 @@ public class ExternalApp : IDisposable
         try
         {
             var capLength = PInvoke.GetWindowTextLength(WindowHandle);
-            var pwstr = new PWSTR();
-            PInvoke.GetWindowText(WindowHandle, pwstr, capLength);
-            return pwstr.AsSpan().ToString();
+            var lpString = new PWSTR();
+            PInvoke.GetWindowText(WindowHandle, lpString, capLength);
+            return lpString.AsSpan().ToString();
         }
         catch
         {
@@ -270,22 +270,24 @@ public class ExternalApp : IDisposable
             string.IsNullOrWhiteSpace(Configuration.CommandLineMatchString))
         {
             // no need to search for anything, bail...
-            return new NativeResult(true);
+            return NativeResult.Success;
         }
 
         var commandFound = false;
 
+        const string win32Processes = "SELECT ProcessId, CommandLine FROM Win32_Process";
+        
         // setup WMI
-        var wmiQuery = "SELECT ProcessId, CommandLine FROM Win32_Process";
-        if (!string.IsNullOrWhiteSpace(Configuration.ProcessNameToTrack))
-            wmiQuery += $" WHERE Name='{Configuration.ProcessNameToTrack}'";
+        var wmiQuery = string.IsNullOrWhiteSpace(Configuration.ProcessNameToTrack)
+            ? $"{win32Processes} WHERE Name='{Configuration.ProcessNameToTrack}'"
+            : win32Processes;
+
         var searcher = new ManagementObjectSearcher(wmiQuery);
         _logger.LogDebug("WMI query to execute: {WmiQuery}", wmiQuery);
 
-        var debugInfoStringBuilder = new StringBuilder();
-        debugInfoStringBuilder.AppendLine($"Process name to track: {Configuration.ProcessNameToTrack}");
-        debugInfoStringBuilder.AppendLine(
-            $"Command line fragment to look for: {Configuration.CommandLineMatchString}");
+        var debugInfo = new StringBuilder();
+        debugInfo.AppendLine($"Process name to track: {Configuration.ProcessNameToTrack}");
+        debugInfo.AppendLine($"Command line fragment to look for: {Configuration.CommandLineMatchString}");
 
         // assign local variables to prevent leaking memory by capturing members in async methods
         var minWaitTimeInMs = Configuration.MinWaitTime * 1000;
@@ -306,6 +308,7 @@ public class ExternalApp : IDisposable
                 var commandLine = wmiWin32Process["CommandLine"] != null
                     ? wmiWin32Process["CommandLine"].ToString()
                     : string.Empty;
+
                 var processIdString = wmiWin32Process["ProcessId"] != null
                     ? wmiWin32Process["ProcessId"].ToString()
                     : string.Empty;
@@ -317,45 +320,36 @@ public class ExternalApp : IDisposable
                 if (string.IsNullOrWhiteSpace(commandLine) || processId <= -1)
                     continue;
 
-                debugInfoStringBuilder.AppendLine($"Process: {processIdString}, Command Line: {commandLine}");
+                debugInfo.AppendLine($"Process: {processIdString}, Command Line: {commandLine}");
 
                 // if no command line match string has been provided, take the process we found
                 // or in case a command line match string has been provided, check if it matches
-                if (string.IsNullOrWhiteSpace(commandLineMatchString) ||
-                    commandLine.ToLower().Contains(commandLineMatchString!.ToLower()))
-                {
-                    if (Process != null)
-                        Process.Exited -= AppProcess_Exited;
-                    Process = Process.GetProcessById(processId);
-                    WindowHandle = new HWND(Process.MainWindowHandle);
-                    commandFound = true;
-                    break;
-                }
+                if (!string.IsNullOrWhiteSpace(commandLineMatchString) &&
+                    !commandLine.ToLower().Contains(commandLineMatchString!.ToLower()))
+                    continue;
+
+                if (Process != null)
+                    Process.Exited -= AppProcess_Exited;
+
+                Process = Process.GetProcessById(processId);
+                WindowHandle = new HWND(Process.MainWindowHandle);
+                commandFound = true;
+                break;
             }
 
             tryCount++;
-            Thread.Sleep(250);
+            await Task.Delay(250);
 
             if (commandFound || tryCount >= maxWaitTime * 4)
                 break;
         }
 
-        if (commandFound)
-        {
-            _logger.LogDebug(
-                "FindProcessAsync succeeded: {Details}",
-                debugInfoStringBuilder);
-        }
-        else
-        {
-            _logger.LogDebug(
-                "FindProcessAsync failed: {Details}",
-                debugInfoStringBuilder);
-        }
+        _logger.LogDebug("{Method} {Result} - Details: {Details}", 
+            nameof(FindProcessAsync), commandFound ? "succeeded" : "failed", debugInfo);
 
         return commandFound
-            ? new NativeResult(true)
-            : new NativeResult(false);
+            ? NativeResult.Success
+            : NativeResult.Fail();
     }
 
     private async Task<bool> FindWindowTitleAsync()
@@ -376,7 +370,7 @@ public class ExternalApp : IDisposable
 
             await Task.Delay(250);
 
-            var provider = new ProcessWindowProvider(_logger);
+            var provider = new ProcessWindowProvider(_loggerFactory.CreateLogger<ProcessWindowProvider>());
 
             foreach (var window in provider.GetProcessWindows())
             {
