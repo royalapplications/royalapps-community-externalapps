@@ -76,16 +76,20 @@ internal sealed class ExternalApp : IDisposable
 
         try
         {
-            if (Configuration.KillOnClose)
+            if (Process != null)
             {
-                Process?.Kill();
-            }
-            else
-            {
-                // for now we just kill the process
-                if (!Process?.CloseMainWindow() ?? true)
+                Process.Exited -= AppProcess_Exited;
+                if (Configuration.KillOnClose)
                 {
-                    Process?.Kill();
+                    Process.Kill();
+                }
+                else
+                {
+                    // for now we just kill the process
+                    if (!Process.CloseMainWindow())
+                    {
+                        Process.Kill();
+                    }
                 }
             }
         }
@@ -102,6 +106,10 @@ internal sealed class ExternalApp : IDisposable
     /// <inheritdoc />
     public void Dispose()
     {
+        if (Process != null)
+        {
+            Process.Exited -= AppProcess_Exited;
+        }
     }
 
     /// <summary>
@@ -133,7 +141,7 @@ internal sealed class ExternalApp : IDisposable
     /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete.</param>
     /// <returns>A <see cref="NativeResult"/> task indicating whether the application has been started successfully.</returns>
     /// <exception cref="InvalidOperationException">Thrown when the application has already been started.</exception>
-    public async Task<NativeResult> StartAsync(CancellationToken cancellationToken)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
         if (ApplicationState != ApplicationState.Stopped)
             throw new InvalidOperationException("Cannot start application because it is already starting or running.");
@@ -142,106 +150,86 @@ internal sealed class ExternalApp : IDisposable
         {
             ApplicationState = ApplicationState.Starting;
 
-            var result = await StartApplicationInternalAsync(cancellationToken);
+            //var result = await StartApplicationInternalAsync(cancellationToken);
+            // 1. NativeResult? StartProcessAsync()
+            // 2. Process? FindProcessAsync()
+            // 3. HWND FindWindowHandleAsync(string windowTitle)
+            
+            Process? process = null;
+            if (!Configuration.UseExistingProcess)
+            {
+                process = await StartProcessAsync(Configuration, cancellationToken);
+            } 
+             
+            if (!string.IsNullOrWhiteSpace(Configuration.ProcessNameToTrack) ||
+                !string.IsNullOrWhiteSpace(Configuration.CommandLineMatchString))
+            {
+                process = await FindProcessAsync(
+                    Configuration.ProcessNameToTrack, 
+                    Configuration.CommandLineMatchString, 
+                    Configuration.MinWaitTime, 
+                    Configuration.MaxWaitTime,
+                    cancellationToken);
+            }
 
-            ApplicationState = result.Succeeded
-                ? ApplicationState.Running
-                : ApplicationState.Stopped;
+            if (!string.IsNullOrEmpty(Configuration.WindowTitleMatch))
+            {
+                await Task.Delay(Configuration.MinWaitTime * 1000, cancellationToken);
+                var window = await FindWindowHandleAsync(Process, Configuration.WindowTitleMatch, Configuration.WindowTitleMatchSkip, Configuration.MaxWaitTime, cancellationToken);
+                
+                if (window == null)
+                {
+                    // TODO: raise window picker event
+                    throw new NotImplementedException();
+                }
+                
+                process = Process.GetProcessById(window.ProcessId);
+            }
 
-            return result;
+            if (process == null)
+            {
+                ApplicationState = ApplicationState.Stopped;
+                throw new InvalidOperationException("Failed to start or capture process.");
+            }
+
+            Process = process;
+            Process.EnableRaisingEvents = true;
+            Process.Exited += AppProcess_Exited;
+            WindowHandle = new HWND(process.MainWindowHandle);
+            ApplicationState = ApplicationState.Running;
         }
         catch (OperationCanceledException)
         {
             _logger.LogInformation("{Method} has been cancelled", nameof(StartAsync));
             ApplicationState = ApplicationState.Stopped;
-
-            return NativeResult.Fail();
         }
     }
-
-    private async Task<NativeResult> StartApplicationInternalAsync(CancellationToken cancellationToken)
+    
+    private static async Task<Process?> StartProcessAsync(ExternalAppConfiguration configuration, CancellationToken cancellationToken)
     {
-        #region --- Start Process (if needed) ---
 
-        var result = await StartProcessAsync(cancellationToken);
-        if (!result.Succeeded)
-            return result;
-
-        #endregion
-
-        #region --- Search for a specific process or command line (if configured) ---
-
-        result = await FindProcessAsync(cancellationToken);
-        if (!result.Succeeded)
-            _logger.LogWarning(result.Exception, "FindProcessAsync raised an error");
-
-        #endregion
-
-        #region --- Search for a specific window title (if configured) ---
-
-        if (!string.IsNullOrEmpty(Configuration.WindowTitleMatch))
-        {
-            var windowFound = await FindWindowTitleAsync(cancellationToken);
-            if (!windowFound)
-            {
-                // TODO: implement event to ask which window to use
-                // ExternalAppState.WindowHandle = GetWindowHandleFromPicker();
-                if (!HasWindow)
-                {
-                    return NativeResult.Fail();
-                }
-            }
-        }
-
-        #endregion
-
-        if (Process == null)
-            return NativeResult.Fail();
-
-        Process.EnableRaisingEvents = true;
-        Process.Exited += AppProcess_Exited;
-
-        return NativeResult.Success;
-    }
-
-    private async Task<NativeResult> StartProcessAsync(CancellationToken cancellationToken)
-    {
-        if (Configuration.UseExistingProcess)
-            return NativeResult.Success;
-
-        #region --- Prepare Process for Execution and Start ---
-
+        // Prepare Process for Execution and Start
+        
+        var process = StartProcess(configuration);
+        if (process == null)
+            throw new InvalidOperationException($"Failed to start process \"{configuration.Command}\"");
+        
         try
         {
-            StartProcess();
-        }
-        catch (Exception ex)
-        {
-            return NativeResult.Fail(ex);
-        }
-
-        if (Process == null)
-        {
-            return NativeResult.Fail();
-        }
-
-        try
-        {
-            Process.WaitForInputIdle();
+            process.WaitForInputIdle();
         }
         catch
         {
             // ignore: PowerShell doesn't allow to wait for input idle
         }
 
-        if (!IsRunning)
+        if (process.HasExited)
         {
-            return NativeResult.Fail(new Exception("The process is not running anymore or does not have a main window handle."));
+            throw new InvalidOperationException("The process is not running anymore or does not have a main window handle.");
         }
+        
 
-        #endregion
-
-        #region --- Wait for the App to be started, try to get the main window handle ---
+        // Wait for the App to be started, try to get the main window handle
 
         // depending on the configuration, we don't always need the main window handle of the process we started
         Exception? lastException = null;
@@ -253,103 +241,97 @@ internal sealed class ExternalApp : IDisposable
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (tryCount >= Configuration.MaxWaitTime * 4)
+            if (tryCount >= configuration.MaxWaitTime * 4)
                 break;
-
-            Process.Refresh();
-
-            await Task.Delay(100, cancellationToken);
-
-            tryCount++;
 
             try
             {
-                mainWindowHandle = Process.MainWindowHandle;
-                mainWindowTitle = Process.MainWindowTitle;
+                process.Refresh();
+
+                await Task.Delay(100, cancellationToken);
+
+                lastException = null;
+                mainWindowHandle = process.MainWindowHandle;
+                mainWindowTitle = process.MainWindowTitle;
             }
             catch (Exception ex)
             {
                 lastException = ex;
             }
-        } while (!Process.HasExited && (mainWindowHandle == IntPtr.Zero || mainWindowTitle == "Default IME"));
+            
+            tryCount++;
 
-        if (!IsRunning || lastException != null)
+        } while (!process.HasExited && (mainWindowHandle == IntPtr.Zero || mainWindowTitle == "Default IME"));
+
+        if (process.HasExited)
         {
-            return NativeResult.Fail(lastException);
+            throw new InvalidOperationException("The process is not running anymore or does not have a main window handle.");
         }
 
-        WindowHandle = new HWND(Process.MainWindowHandle);
+        if (lastException != null)
+        {
+            throw new InvalidOperationException($"Failed to start process after {tryCount} retries. See inner exception.", lastException);
+        }
 
-        #endregion
-
-        return NativeResult.Success;
+        return process;
     }
 
-    private void StartProcess()
+    private static Process? StartProcess(ExternalAppConfiguration configuration)
     {
         var processStartInfo = new ProcessStartInfo(
-            Configuration.Command ?? string.Empty,
-            Configuration.Arguments ?? string.Empty)
+            configuration.Command ?? string.Empty,
+            configuration.Arguments ?? string.Empty)
         {
-            WindowStyle = Configuration.StartHidden && !Configuration.StartExternal
+            WindowStyle = configuration.StartHidden && !configuration.StartExternal
                 ? ProcessWindowStyle.Minimized
                 : ProcessWindowStyle.Normal,
-            CreateNoWindow = Configuration.StartHidden &&
-                             !Configuration.StartExternal,
+            CreateNoWindow = configuration.StartHidden &&
+                             !configuration.StartExternal,
             UseShellExecute = true,
-            WorkingDirectory = Configuration.WorkingDirectory ?? ".",
-            LoadUserProfile = Configuration.LoadUserProfile,
+            WorkingDirectory = configuration.WorkingDirectory ?? ".",
+            LoadUserProfile = configuration.LoadUserProfile,
         };
 
-        if (Configuration.RunElevated)
+        if (configuration.RunElevated)
         {
             processStartInfo.UseShellExecute = true;
             processStartInfo.Verb = "runas";
         }
-        else if (Configuration.UseCredentials)
+        else if (configuration.UseCredentials)
         {
             processStartInfo.UseShellExecute = false;
             processStartInfo.Verb = "runas";
-            if (Configuration.Username != null)
-                processStartInfo.UserName = Configuration.Username;
-            if (Configuration.Domain != null)
-                processStartInfo.Domain = Configuration.Domain;
-            if (Configuration.Password != null)
-                processStartInfo.Password = SecureStringExtensions.ConvertToSecureString(Configuration.Password);
+            if (configuration.Username != null)
+                processStartInfo.UserName = configuration.Username;
+            if (configuration.Domain != null)
+                processStartInfo.Domain = configuration.Domain;
+            if (configuration.Password != null)
+                processStartInfo.Password = SecureStringExtensions.ConvertToSecureString(configuration.Password);
         }
 
-        Process = Process.Start(processStartInfo);
+        var process = Process.Start(processStartInfo);
+        
+        return process;
     }
 
-    private async Task<NativeResult> FindProcessAsync(CancellationToken cancellationToken)
+    private async Task<Process?> FindProcessAsync(string? processNameToTrack, string? commandLineMatch, int minWaitTime, int maxWaitTime, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(Configuration.ProcessNameToTrack) &&
-            string.IsNullOrWhiteSpace(Configuration.CommandLineMatchString))
-        {
-            // no need to search for anything, bail...
-            return NativeResult.Success;
-        }
-
-        var commandFound = false;
-
         const string win32Processes = "SELECT ProcessId, CommandLine FROM Win32_Process";
 
         // setup WMI
-        var wmiQuery = string.IsNullOrWhiteSpace(Configuration.ProcessNameToTrack)
-            ? $"{win32Processes} WHERE Name='{Configuration.ProcessNameToTrack}'"
+        var wmiQuery = string.IsNullOrWhiteSpace(processNameToTrack)
+            ? $"{win32Processes} WHERE Name='{processNameToTrack}'"
             : win32Processes;
 
         var searcher = new ManagementObjectSearcher(wmiQuery);
         _logger.LogDebug("WMI query to execute: {WmiQuery}", wmiQuery);
 
         var debugInfo = new StringBuilder();
-        debugInfo.AppendLine($"Process name to track: {Configuration.ProcessNameToTrack}");
-        debugInfo.AppendLine($"Command line fragment to look for: {Configuration.CommandLineMatchString}");
+        debugInfo.AppendLine($"Process name to track: {processNameToTrack}");
+        debugInfo.AppendLine($"Command line fragment to look for: {commandLineMatch}");
 
         // assign local variables to prevent leaking memory by capturing members in async methods
-        var minWaitTimeInMs = Configuration.MinWaitTime * 1000;
-        var maxWaitTime = Configuration.MaxWaitTime;
-        var commandLineMatchString = Configuration.CommandLineMatchString;
+        var minWaitTimeInMs = minWaitTime * 1000;
 
         // first, wait the MinWaitTime, before we look for a process or command line
         await Task.Delay(minWaitTimeInMs, cancellationToken);
@@ -383,54 +365,43 @@ internal sealed class ExternalApp : IDisposable
 
                 // if no command line match string has been provided, take the process we found
                 // or in case a command line match string has been provided, check if it matches
-                if (!string.IsNullOrWhiteSpace(commandLineMatchString) &&
-                    !commandLine.ToLower().Contains(commandLineMatchString!.ToLower()))
+                if (!string.IsNullOrWhiteSpace(commandLineMatch) &&
+                    !commandLine.ToLower().Contains(commandLineMatch!.ToLower()))
                     continue;
 
-                if (Process != null)
-                    Process.Exited -= AppProcess_Exited;
-
-                Process = Process.GetProcessById(processId);
-                WindowHandle = new HWND(Process.MainWindowHandle);
-                commandFound = true;
-                break;
+                // if (Process != null)
+                //     Process.Exited -= AppProcess_Exited;
+                //
+                // Process = Process.GetProcessById(processId);
+                // WindowHandle = new HWND(Process.MainWindowHandle);
+                
+                _logger.LogDebug("{Method} succeeded - Details: {Details}", nameof(FindProcessAsync), debugInfo);
+                
+                return Process.GetProcessById(processId);
             }
 
             tryCount++;
             await Task.Delay(250, cancellationToken);
 
-            if (commandFound || tryCount >= maxWaitTime * 4)
+            if (tryCount >= maxWaitTime * 4)
                 break;
         }
 
-        _logger.LogDebug(
-            "{Method} {Result} - Details: {Details}",
-            nameof(FindProcessAsync),
-            commandFound ? "succeeded" : "failed",
-            debugInfo);
+        _logger.LogDebug("{Method} failed - Details: {Details}", nameof(FindProcessAsync), debugInfo);
 
-        return commandFound
-            ? NativeResult.Success
-            : NativeResult.Fail();
+        return null;
     }
 
-    private async Task<bool> FindWindowTitleAsync(CancellationToken cancellationToken)
+    private async Task<ProcessWindowInfo?> FindWindowHandleAsync(Process? process, string titleMatch, int titleMatchSkip, int maxWaitTime, CancellationToken cancellationToken)
     {
-        await Task.Delay(Configuration.MinWaitTime * 1000, cancellationToken);
-
         var tryCountMatch = 0;
         var titleMatches = 0;
-        var windowFound = false;
-
-        if (Process == null)
-            return false;
+        
+        var currentWindowHandle = process != null ? new HWND(process.MainWindowHandle) : default;
 
         do
         {
             cancellationToken.ThrowIfCancellationRequested();
-
-            if (tryCountMatch >= Configuration.MaxWaitTime * 4)
-                break;
 
             await Task.Delay(250, cancellationToken);
 
@@ -438,43 +409,42 @@ internal sealed class ExternalApp : IDisposable
 
             foreach (var window in provider.GetProcessWindows())
             {
-                if (window.ProcessId != Process.Id)
+                if (process != null && window.ProcessId != process.Id)
                     continue;
 
                 // title matches
-                if (!window.WindowTitle.Contains(Configuration.WindowTitleMatch))
+                if (!window.WindowTitle.Contains(titleMatch))
                     continue;
 
                 // we are still on the same window
-                if (Configuration.WindowTitleMatchSkip > 0 && WindowHandle == window.MainWindowHandle.Value)
+                if (titleMatchSkip > 0 && currentWindowHandle == window.WindowHandle.Value)
                     continue;
 
                 // if window title matches should be skipped
-                if (titleMatches <= Configuration.WindowTitleMatchSkip)
+                if (titleMatches <= titleMatchSkip)
                 {
                     titleMatches++;
                     break;
                 }
 
                 // remember the current window handle
-                WindowHandle = window.MainWindowHandle;
-
-                // window finally found
-                windowFound = true;
-                break;
+                return window;
+                
             }
 
             tryCountMatch++;
-        }
-        while (Process.HasExited == false && !windowFound);
+        } while (tryCountMatch < maxWaitTime * 4);
 
-        return windowFound;
+        return null;
     }
 
     private void AppProcess_Exited(object? sender, EventArgs e)
     {
         try
         {
+            if (sender is Process process)
+                process.Exited -= AppProcess_Exited;
+            
             ProcessExited?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception ex)

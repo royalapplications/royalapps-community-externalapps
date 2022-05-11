@@ -4,11 +4,11 @@ using Windows.Win32.Foundation;
 
 internal class ProcessWindowInfo
 {
-    public ProcessWindowInfo(int processId, string executablePath, HWND mainWindowHandle, string windowTitle)
+    public ProcessWindowInfo(int processId, string executablePath, HWND windowHandle, string windowTitle)
     {
         ProcessId = processId;
         ExecutablePath = executablePath;
-        MainWindowHandle = mainWindowHandle;
+        WindowHandle = windowHandle;
         WindowTitle = windowTitle;
     }
 
@@ -18,5 +18,5 @@ internal class ProcessWindowInfo
 
     public string WindowTitle { get; }
 
-    public HWND MainWindowHandle { get; }
+    public HWND WindowHandle { get; }
 }

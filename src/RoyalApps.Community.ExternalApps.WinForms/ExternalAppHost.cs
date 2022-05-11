@@ -6,10 +6,8 @@ using WindowManagement;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -89,7 +87,7 @@ public class ExternalAppHost : UserControl
     /// <returns>A <see cref="NativeResult"/> indicating whether the operation was successful.</returns>
     public NativeResult EmbedApplication()
     {
-        if (_externalApp is { HasWindow: false })
+        if (_externalApp is {HasWindow: false})
         {
             // process not found or application has been closed
             RaiseApplicationClosed();
@@ -152,7 +150,7 @@ public class ExternalAppHost : UserControl
     /// </summary>
     public void FreeApplication()
     {
-        if (_externalApp is null or { HasWindow: false })
+        if (_externalApp is null or {HasWindow: false})
             return;
 
         var handle = _externalApp.WindowHandle;
@@ -169,7 +167,7 @@ public class ExternalAppHost : UserControl
     /// <returns>The screenshot <see cref="Bitmap"/>.</returns>
     public Bitmap? GetWindowScreenshot()
     {
-        if (_externalApp is null or { HasWindow: false })
+        if (_externalApp is null or {HasWindow: false})
             return null;
 
         PInvoke.GetWindowRect(_externalApp.WindowHandle, out var rect);
@@ -195,42 +193,10 @@ public class ExternalAppHost : UserControl
     /// </summary>
     public void MaximizeApplication()
     {
-        if (_externalApp is not { HasWindow: true })
+        if (_externalApp is not {HasWindow: true})
             return;
 
         PInvoke.ShowWindow(_externalApp.WindowHandle, SHOW_WINDOW_CMD.SW_SHOWMAXIMIZED);
-    }
-
-    /// <summary>
-    /// Sets the external application's window position to the default values.
-    /// </summary>
-    public void SetWindowPosition()
-    {
-        if (Disposing || IsDisposed)
-            return;
-
-        try
-        {
-            if (_externalApp is { IsEmbedded: true })
-            {
-                SetWindowPosition(0, 0, Width, Height);
-            }
-            else
-            {
-                if (_externalApp != null)
-                    PInvoke.ShowWindow(_externalApp.WindowHandle, SHOW_WINDOW_CMD.SW_SHOWDEFAULT);
-
-                SetWindowPosition(new Rectangle(
-                    PointToScreen(new Point(Left - SystemInformation.Border3DSize.Width, Top)).X,
-                    PointToScreen(new Point(Left - SystemInformation.Border3DSize.Width, Top)).Y,
-                    Width,
-                    Height));
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "Cannot set the window position");
-        }
     }
 
     /// <summary>
@@ -251,7 +217,7 @@ public class ExternalAppHost : UserControl
     /// <param name="height">The window's height.</param>
     public void SetWindowPosition(int x, int y, int width, int height)
     {
-        if (_externalApp is null or { HasWindow: false })
+        if (_externalApp is null or {HasWindow: false})
             return;
 
         // the coordinates of the client area rectangle
@@ -300,7 +266,7 @@ public class ExternalAppHost : UserControl
     /// <param name="externalWindowActivation"></param>
     protected virtual void OnFocusApplication(bool externalWindowActivation)
     {
-        if (_externalApp is null or { HasWindow: false })
+        if (_externalApp is null or {HasWindow: false})
             return;
 
         if (!_externalApp.IsEmbedded && !externalWindowActivation)
@@ -355,7 +321,7 @@ public class ExternalAppHost : UserControl
 
     private void RaiseApplicationActivated()
     {
-        LogVerboseInDebugOnly(nameof(RaiseApplicationActivated));
+        Logger.WithCallerInfo(logger => logger.LogDebug(nameof(RaiseApplicationActivated)));
         OnApplicationActivated();
         ApplicationActivated?.Invoke(this, EventArgs.Empty);
     }
@@ -368,21 +334,21 @@ public class ExternalAppHost : UserControl
             return;
         }
 
-        LogVerboseInDebugOnly(nameof(RaiseApplicationClosed));
+        Logger.WithCallerInfo(logger => logger.LogDebug(nameof(RaiseApplicationClosed)));
         OnApplicationClosed();
         ApplicationClosed?.Invoke(this, EventArgs.Empty);
     }
 
     private void RaiseApplicationStarted()
     {
-        LogVerboseInDebugOnly(nameof(RaiseApplicationStarted));
+        Logger.WithCallerInfo(logger => logger.LogDebug(nameof(RaiseApplicationStarted)));
         OnApplicationStarted();
         ApplicationStarted?.Invoke(this, EventArgs.Empty);
     }
 
     private void RaiseWindowTitleChanged()
     {
-        LogVerboseInDebugOnly(nameof(RaiseWindowTitleChanged));
+        Logger.WithCallerInfo(logger => logger.LogDebug(nameof(RaiseWindowTitleChanged)));
         OnWindowTitleChanged();
         WindowTitleChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -392,11 +358,47 @@ public class ExternalAppHost : UserControl
         _externalApp = new ExternalApp(configuration, LoggerFactory);
         _externalApp.ProcessExited += ExternalApp_ProcessExited;
 
-        var result = await _externalApp.StartAsync(cancellationToken);
-
-        if (result.Succeeded)
+        try
         {
+            await _externalApp.StartAsync(cancellationToken);
             Invoke(StartedSuccessful);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Sets the external application's window position to the default values.
+    /// </summary>
+    private void SetWindowPosition()
+    {
+        if (Disposing || IsDisposed)
+            return;
+
+        try
+        {
+            if (_externalApp is {IsEmbedded: true})
+            {
+                SetWindowPosition(0, 0, Width, Height);
+            }
+            else
+            {
+                if (_externalApp != null)
+                    PInvoke.ShowWindow(_externalApp.WindowHandle, SHOW_WINDOW_CMD.SW_SHOWDEFAULT);
+
+                SetWindowPosition(new Rectangle(
+                    PointToScreen(new Point(Left - SystemInformation.Border3DSize.Width, Top)).X,
+                    PointToScreen(new Point(Left - SystemInformation.Border3DSize.Width, Top)).Y,
+                    Width,
+                    Height));
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Cannot set the window position");
         }
     }
 
@@ -459,8 +461,7 @@ public class ExternalAppHost : UserControl
 
                 retry++;
                 Thread.Sleep(100);
-            }
-            while (true);
+            } while (true);
 
             if (result.Succeeded)
             {
@@ -500,7 +501,7 @@ public class ExternalAppHost : UserControl
 
     private void SetupHooks()
     {
-        if (_externalApp is null or { IsRunning: false })
+        if (_externalApp is null or {IsRunning: false})
             return;
 
         var winEventProc = new WINEVENTPROC(WinEventProc);
@@ -525,31 +526,25 @@ public class ExternalAppHost : UserControl
     // ReSharper disable once IdentifierTypo
     private void WinEventProc(HWINEVENTHOOK hWinEventHook, uint eventType, HWND hWnd, int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
     {
-        LogVerboseInDebugOnly($"WinEventProc: EventType: {eventType}, Window Handle: {hWnd}, idObject: {idObject}, idChild: {idChild}");
-
+        Logger.WithCallerInfo(logger => logger.LogDebug("WinEventProc: EventType: {EventType}, Window Handle: {WindowHandle}, idObject: {IdObject}, idChild: {IdChild}", 
+            eventType, hWnd, idObject, idChild));
+            
         if (_externalApp == null)
             return;
 
         if (_externalApp.WindowHandle != hWnd)
         {
-            LogVerboseInDebugOnly(
-                $"WinEventProc: exiting because WindowHandle ({_externalApp.WindowHandle}) != hWnd ({hWnd})");
+            Logger.WithCallerInfo(logger => logger.LogDebug("WinEventProc: exiting because WindowHandle ({AppWindowHandle}) != hWnd ({WindowHandle})", 
+                _externalApp.WindowHandle, hWnd));
             return;
         }
 
         switch (eventType)
         {
             case PInvoke.EVENT_OBJECT_NAMECHANGE:
-                LogVerboseInDebugOnly($"WinEventProc: EVENT_OBJECT_NAMECHANGE: {_externalApp.GetWindowTitle()}");
+                Logger.WithCallerInfo(logger => logger.LogDebug("WinEventProc: EVENT_OBJECT_NAMECHANGE: {WindowTitle}", _externalApp.GetWindowTitle()));
                 Invoke(RaiseWindowTitleChanged);
                 break;
         }
-    }
-
-    private void LogVerboseInDebugOnly(string message, [CallerMemberName] string memberName = "", [CallerFilePath] string sourceFilePath = "", [CallerLineNumber] int sourceLineNumber = 0)
-    {
-        #if DEBUG
-        Debug.WriteLine(message);
-        #endif
     }
 }
