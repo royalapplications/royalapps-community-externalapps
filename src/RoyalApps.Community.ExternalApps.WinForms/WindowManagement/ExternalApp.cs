@@ -1,40 +1,138 @@
+namespace RoyalApps.Community.ExternalApps.WinForms.WindowManagement;
+
 using System;
 using System.Diagnostics;
 using System.Management;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using Windows.Win32;
 using Windows.Win32.Foundation;
-using Microsoft.Extensions.Logging;
-using System.Threading;
 
-namespace RoyalApps.Community.ExternalApps.WinForms.WindowManagement;
-
+/// <summary>
+/// Encapsulates an external process.
+/// </summary>
 internal sealed class ExternalApp : IDisposable
 {
-    private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<ExternalApp> _logger;
-    public ApplicationState ApplicationState { get; private set; } = ApplicationState.Stopped;
-    public ExternalAppConfiguration Configuration { get; }
-    public bool HasWindow => WindowHandle.Value != IntPtr.Zero;
-    public bool IsEmbedded { get; set; }
-    public bool IsRunning => Process is {HasExited: false};
-    public Process? Process { get; private set; }
-    public HWND WindowHandle { get; private set; }
-    public event EventHandler? ProcessExited;
-
+    private readonly ILoggerFactory _loggerFactory;
+    
     public ExternalApp(ExternalAppConfiguration configuration, ILoggerFactory loggerFactory)
     {
         Configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
-        
+
         _logger = loggerFactory.CreateLogger<ExternalApp>();
     }
 
+    /// <summary>
+    /// Fired when the external application's process exits. 
+    /// </summary>
+    public event EventHandler? ProcessExited;
+
+    /// <summary>
+    /// Gets the current state of the external application.
+    /// </summary>
+    public ApplicationState ApplicationState { get; private set; } = ApplicationState.Stopped;
+
+    /// <summary>
+    /// Gets the configuration for the external application.
+    /// </summary>
+    public ExternalAppConfiguration Configuration { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether a window handle has been set.
+    /// </summary>
+    public bool HasWindow => WindowHandle.Value != IntPtr.Zero;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the external application is embedded or not. 
+    /// </summary>
+    public bool IsEmbedded { get; set; }
+
+    /// <summary>
+    /// Gets a value indicating whether the external application's process is running.
+    /// </summary>
+    public bool IsRunning => Process is { HasExited: false };
+
+    /// <summary>
+    /// Gets the external application's process. 
+    /// </summary>
+    public Process? Process { get; private set; }
+
+    /// <summary>
+    /// Gets the external application's window handle.
+    /// </summary>
+    public HWND WindowHandle { get; private set; }
+
+    /// <summary>
+    /// Closes the external application.
+    /// </summary>
+    public void CloseApplication()
+    {
+        if (!HasWindow || !IsRunning)
+            return;
+
+        try
+        {
+            if (Configuration.KillOnClose)
+            {
+                Process?.Kill();
+            }
+            else
+            {
+                // for now we just kill the process
+                if (!Process?.CloseMainWindow() ?? true)
+                {
+                    Process?.Kill();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Closing external application failed");
+        }
+        finally
+        {
+            ApplicationState = ApplicationState.Stopped;
+        }
+    }
+
+    /// <inheritdoc />
     public void Dispose()
     {
     }
 
+    /// <summary>
+    /// Tries to the external application's window title.
+    /// </summary>
+    /// <returns>A string containing the window title or an empty string, if not found.</returns>
+    public string GetWindowTitle()
+    {
+        if (Process == null || WindowHandle.Value == IntPtr.Zero)
+            return string.Empty;
+        try
+        {
+            var capLength = PInvoke.GetWindowTextLength(WindowHandle);
+            var lpString = default(PWSTR);
+            PInvoke.GetWindowText(WindowHandle, lpString, capLength);
+            return lpString.AsSpan().ToString();
+        }
+        catch
+        {
+            // ignored
+        }
+
+        return string.Empty;
+    }
+
+    /// <summary>
+    /// Creates a task which starts the external application's process.
+    /// </summary>
+    /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete.</param>
+    /// <returns>A <see cref="NativeResult"/> task indicating whether the application has been started successfully.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when the application has already been started.</exception>
     public async Task<NativeResult> StartAsync(CancellationToken cancellationToken)
     {
         if (ApplicationState != ApplicationState.Stopped)
@@ -43,7 +141,7 @@ internal sealed class ExternalApp : IDisposable
         try
         {
             ApplicationState = ApplicationState.Starting;
-            
+
             var result = await StartApplicationInternalAsync(cancellationToken);
 
             ApplicationState = result.Succeeded
@@ -56,7 +154,7 @@ internal sealed class ExternalApp : IDisposable
         {
             _logger.LogInformation("{Method} has been cancelled", nameof(StartAsync));
             ApplicationState = ApplicationState.Stopped;
-            
+
             return NativeResult.Fail();
         }
     }
@@ -87,7 +185,7 @@ internal sealed class ExternalApp : IDisposable
             if (!windowFound)
             {
                 // TODO: implement event to ask which window to use
-                //ExternalAppState.WindowHandle = GetWindowHandleFromPicker();
+                // ExternalAppState.WindowHandle = GetWindowHandleFromPicker();
                 if (!HasWindow)
                 {
                     return NativeResult.Fail();
@@ -146,7 +244,6 @@ internal sealed class ExternalApp : IDisposable
         #region --- Wait for the App to be started, try to get the main window handle ---
 
         // depending on the configuration, we don't always need the main window handle of the process we started
-
         Exception? lastException = null;
 
         var tryCount = 0;
@@ -155,7 +252,7 @@ internal sealed class ExternalApp : IDisposable
         do
         {
             cancellationToken.ThrowIfCancellationRequested();
-            
+
             if (tryCount >= Configuration.MaxWaitTime * 4)
                 break;
 
@@ -201,7 +298,7 @@ internal sealed class ExternalApp : IDisposable
                              !Configuration.StartExternal,
             UseShellExecute = true,
             WorkingDirectory = Configuration.WorkingDirectory ?? ".",
-            LoadUserProfile = Configuration.LoadUserProfile
+            LoadUserProfile = Configuration.LoadUserProfile,
         };
 
         if (Configuration.RunElevated)
@@ -224,58 +321,6 @@ internal sealed class ExternalApp : IDisposable
         Process = Process.Start(processStartInfo);
     }
 
-    /// <summary>
-    /// 
-    /// </summary>
-    public void CloseApplication()
-    {
-        if (!HasWindow || !IsRunning)
-            return;
-
-        try
-        {
-            if (Configuration.KillOnClose)
-            {
-                Process?.Kill();
-            }
-            else
-            {
-                // for now we just kill the process
-                if (!Process?.CloseMainWindow() ?? true)
-                {
-                    Process?.Kill();
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Closing external application failed");
-        }
-        finally
-        {
-            ApplicationState = ApplicationState.Stopped;
-        }
-    }
-
-    public string GetWindowTitle()
-    {
-        if (Process == null || WindowHandle.Value == IntPtr.Zero)
-            return string.Empty;
-        try
-        {
-            var capLength = PInvoke.GetWindowTextLength(WindowHandle);
-            var lpString = new PWSTR();
-            PInvoke.GetWindowText(WindowHandle, lpString, capLength);
-            return lpString.AsSpan().ToString();
-        }
-        catch
-        {
-            // ignored
-        }
-
-        return string.Empty;
-    }
-
     private async Task<NativeResult> FindProcessAsync(CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(Configuration.ProcessNameToTrack) &&
@@ -288,7 +333,7 @@ internal sealed class ExternalApp : IDisposable
         var commandFound = false;
 
         const string win32Processes = "SELECT ProcessId, CommandLine FROM Win32_Process";
-        
+
         // setup WMI
         var wmiQuery = string.IsNullOrWhiteSpace(Configuration.ProcessNameToTrack)
             ? $"{win32Processes} WHERE Name='{Configuration.ProcessNameToTrack}'"
@@ -313,7 +358,7 @@ internal sealed class ExternalApp : IDisposable
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            
+
             foreach (var managementBaseObject in searcher.Get())
             {
                 if (managementBaseObject is not ManagementObject wmiWin32Process)
@@ -358,8 +403,11 @@ internal sealed class ExternalApp : IDisposable
                 break;
         }
 
-        _logger.LogDebug("{Method} {Result} - Details: {Details}", 
-            nameof(FindProcessAsync), commandFound ? "succeeded" : "failed", debugInfo);
+        _logger.LogDebug(
+            "{Method} {Result} - Details: {Details}",
+            nameof(FindProcessAsync),
+            commandFound ? "succeeded" : "failed",
+            debugInfo);
 
         return commandFound
             ? NativeResult.Success
@@ -380,7 +428,7 @@ internal sealed class ExternalApp : IDisposable
         do
         {
             cancellationToken.ThrowIfCancellationRequested();
-            
+
             if (tryCountMatch >= Configuration.MaxWaitTime * 4)
                 break;
 
@@ -417,7 +465,8 @@ internal sealed class ExternalApp : IDisposable
             }
 
             tryCountMatch++;
-        } while (Process.HasExited == false && !windowFound);
+        }
+        while (Process.HasExited == false && !windowFound);
 
         return windowFound;
     }

@@ -14,11 +14,11 @@
         <Version>0.1.0</Version>
         <Nullable>enable</Nullable>
         <LangVersion>10</LangVersion>
-<!--        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>-->
+        <!--        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>-->
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
         <NoWarn>NU1701</NoWarn>
     </PropertyGroup>
-    
+
     <PropertyGroup>
         <TargetFrameworks>net462;net5.0-windows;net6.0-windows</TargetFrameworks>
         <RuntimeIdentifier>win</RuntimeIdentifier>
@@ -53,7 +53,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <Reference Include="System.Management" />
+        <Reference Include="System.Management" />
     </ItemGroup>
 
 </Project>
