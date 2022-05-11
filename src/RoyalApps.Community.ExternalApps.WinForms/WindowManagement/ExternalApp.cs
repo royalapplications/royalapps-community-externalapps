@@ -150,11 +150,6 @@ internal sealed class ExternalApp : IDisposable
         {
             ApplicationState = ApplicationState.Starting;
 
-            //var result = await StartApplicationInternalAsync(cancellationToken);
-            // 1. NativeResult? StartProcessAsync()
-            // 2. Process? FindProcessAsync()
-            // 3. HWND FindWindowHandleAsync(string windowTitle)
-            
             Process? process = null;
             if (!Configuration.UseExistingProcess)
             {
@@ -207,9 +202,7 @@ internal sealed class ExternalApp : IDisposable
     
     private static async Task<Process?> StartProcessAsync(ExternalAppConfiguration configuration, CancellationToken cancellationToken)
     {
-
         // Prepare Process for Execution and Start
-        
         var process = StartProcess(configuration);
         if (process == null)
             throw new InvalidOperationException($"Failed to start process \"{configuration.Command}\"");
@@ -230,7 +223,6 @@ internal sealed class ExternalApp : IDisposable
         
 
         // Wait for the App to be started, try to get the main window handle
-
         // depending on the configuration, we don't always need the main window handle of the process we started
         Exception? lastException = null;
 
