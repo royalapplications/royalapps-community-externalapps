@@ -3,7 +3,7 @@ using System.Security;
 
 namespace RoyalApps.Community.ExternalApps.WinForms;
 
-public class SecureStringExtensions
+internal static class SecureStringExtensions
 {
     public static SecureString ConvertToSecureString(string password)
     {
