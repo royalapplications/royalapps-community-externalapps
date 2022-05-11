@@ -118,12 +118,12 @@ public class ExternalAppHost : UserControl
         taskFactory.StartNew(() => StartAsync(configuration));
     }
 
-    private async Task StartAsync(ExternalAppConfiguration configuration)
+    private async Task StartAsync(ExternalAppConfiguration configuration, CancellationToken cancellationToken = default)
     {
         _externalApp = new ExternalApp(configuration, LoggerFactory);
         _externalApp.ProcessExited += ExternalApp_ProcessExited;
         
-        var result = await _externalApp.StartAsync();
+        var result = await _externalApp.StartAsync(cancellationToken);
 
         if (result.Succeeded)
         {

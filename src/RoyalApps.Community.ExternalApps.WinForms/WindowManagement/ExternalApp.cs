@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Microsoft.Extensions.Logging;
+using System.Threading;
 
 namespace RoyalApps.Community.ExternalApps.WinForms.WindowManagement;
 
@@ -34,27 +35,37 @@ internal sealed class ExternalApp : IDisposable
     {
     }
 
-    public async Task<NativeResult> StartAsync()
+    public async Task<NativeResult> StartAsync(CancellationToken cancellationToken)
     {
         if (ApplicationState != ApplicationState.Stopped)
             throw new InvalidOperationException("Cannot start application because it is already starting or running.");
 
-        ApplicationState = ApplicationState.Starting;
+        try
+        {
+            ApplicationState = ApplicationState.Starting;
+            
+            var result = await StartApplicationInternalAsync(cancellationToken);
 
-        var result = await StartApplicationInternalAsync();
+            ApplicationState = result.Succeeded
+                ? ApplicationState.Running
+                : ApplicationState.Stopped;
 
-        ApplicationState = result.Succeeded
-            ? ApplicationState.Running
-            : ApplicationState.Stopped;
-
-        return result;
+            return result;
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogInformation("{Method} has been cancelled", nameof(StartAsync));
+            ApplicationState = ApplicationState.Stopped;
+            
+            return NativeResult.Fail();
+        }
     }
 
-    private async Task<NativeResult> StartApplicationInternalAsync()
+    private async Task<NativeResult> StartApplicationInternalAsync(CancellationToken cancellationToken)
     {
         #region --- Start Process (if needed) ---
 
-        var result = await StartProcessAsync();
+        var result = await StartProcessAsync(cancellationToken);
         if (!result.Succeeded)
             return result;
 
@@ -62,7 +73,7 @@ internal sealed class ExternalApp : IDisposable
 
         #region --- Search for a specific process or command line (if configured) ---
 
-        result = await FindProcessAsync();
+        result = await FindProcessAsync(cancellationToken);
         if (!result.Succeeded)
             _logger.LogWarning(result.Exception, "FindProcessAsync raised an error");
 
@@ -72,7 +83,7 @@ internal sealed class ExternalApp : IDisposable
 
         if (!string.IsNullOrEmpty(Configuration.WindowTitleMatch))
         {
-            var windowFound = await FindWindowTitleAsync();
+            var windowFound = await FindWindowTitleAsync(cancellationToken);
             if (!windowFound)
             {
                 // TODO: implement event to ask which window to use
@@ -95,7 +106,7 @@ internal sealed class ExternalApp : IDisposable
         return NativeResult.Success;
     }
 
-    private async Task<NativeResult> StartProcessAsync()
+    private async Task<NativeResult> StartProcessAsync(CancellationToken cancellationToken)
     {
         if (Configuration.UseExistingProcess)
             return NativeResult.Success;
@@ -143,12 +154,14 @@ internal sealed class ExternalApp : IDisposable
         var mainWindowTitle = "Default IME";
         do
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            
             if (tryCount >= Configuration.MaxWaitTime * 4)
                 break;
 
             Process.Refresh();
 
-            await Task.Delay(100);
+            await Task.Delay(100, cancellationToken);
 
             tryCount++;
 
@@ -161,8 +174,7 @@ internal sealed class ExternalApp : IDisposable
             {
                 lastException = ex;
             }
-        } while (!Process.HasExited &&
-                 (mainWindowHandle == IntPtr.Zero || mainWindowTitle == "Default IME"));
+        } while (!Process.HasExited && (mainWindowHandle == IntPtr.Zero || mainWindowTitle == "Default IME"));
 
         if (!IsRunning || lastException != null)
         {
@@ -264,7 +276,7 @@ internal sealed class ExternalApp : IDisposable
         return string.Empty;
     }
 
-    private async Task<NativeResult> FindProcessAsync()
+    private async Task<NativeResult> FindProcessAsync(CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(Configuration.ProcessNameToTrack) &&
             string.IsNullOrWhiteSpace(Configuration.CommandLineMatchString))
@@ -295,11 +307,13 @@ internal sealed class ExternalApp : IDisposable
         var commandLineMatchString = Configuration.CommandLineMatchString;
 
         // first, wait the MinWaitTime, before we look for a process or command line
-        await Task.Delay(minWaitTimeInMs);
+        await Task.Delay(minWaitTimeInMs, cancellationToken);
 
         var tryCount = 0;
         while (true)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            
             foreach (var managementBaseObject in searcher.Get())
             {
                 if (managementBaseObject is not ManagementObject wmiWin32Process)
@@ -338,7 +352,7 @@ internal sealed class ExternalApp : IDisposable
             }
 
             tryCount++;
-            await Task.Delay(250);
+            await Task.Delay(250, cancellationToken);
 
             if (commandFound || tryCount >= maxWaitTime * 4)
                 break;
@@ -352,9 +366,9 @@ internal sealed class ExternalApp : IDisposable
             : NativeResult.Fail();
     }
 
-    private async Task<bool> FindWindowTitleAsync()
+    private async Task<bool> FindWindowTitleAsync(CancellationToken cancellationToken)
     {
-        await Task.Delay(Configuration.MinWaitTime * 1000);
+        await Task.Delay(Configuration.MinWaitTime * 1000, cancellationToken);
 
         var tryCountMatch = 0;
         var titleMatches = 0;
@@ -365,10 +379,12 @@ internal sealed class ExternalApp : IDisposable
 
         do
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            
             if (tryCountMatch >= Configuration.MaxWaitTime * 4)
                 break;
 
-            await Task.Delay(250);
+            await Task.Delay(250, cancellationToken);
 
             var provider = new ProcessWindowProvider(_loggerFactory.CreateLogger<ProcessWindowProvider>());
 
