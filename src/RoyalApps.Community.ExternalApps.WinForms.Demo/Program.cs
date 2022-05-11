@@ -1,3 +1,6 @@
+using System;
+using System.Windows.Forms;
+
 namespace RoyalApps.Community.ExternalApps.WinForms.Demo;
 
 static class Program
@@ -11,6 +14,9 @@ static class Program
         // To customize application configuration such as set high DPI settings or default font,
         // see https://aka.ms/applicationconfiguration.
         ApplicationConfiguration.Initialize();
+        // Application.EnableVisualStyles();
+        // Application.SetCompatibleTextRenderingDefault(false);
+        
         Application.Run(new FormMain());
     }
 }
