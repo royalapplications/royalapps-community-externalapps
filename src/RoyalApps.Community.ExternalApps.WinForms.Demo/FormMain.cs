@@ -51,6 +51,11 @@ public partial class FormMain : Form
         AddApplication(TabControlRight, new ExternalAppConfiguration {Command = StripTextBoxQuickEmbed.Text});
     }
 
+    private void StripMenuItemAsChild_Click(object? sender, EventArgs e)
+    {
+        StripMenuItemAsChild.Checked = !StripMenuItemAsChild.Checked;
+    }
+
     private void AddApplication(TabControl tabControl, ExternalAppConfiguration externalAppConfiguration)
     {
         if (string.IsNullOrWhiteSpace(externalAppConfiguration.Command))
@@ -86,4 +91,5 @@ public partial class FormMain : Form
     {
         TextBoxLog.Text += $@"{Environment.NewLine}{DateTime.Now.ToShortTimeString()}: {message}";
     }
+
 }

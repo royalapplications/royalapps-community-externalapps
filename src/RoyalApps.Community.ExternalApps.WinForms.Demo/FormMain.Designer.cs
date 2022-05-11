@@ -254,6 +254,7 @@ partial class FormMain
         this.StripMenuItemAsChild.Name = "StripMenuItemAsChild";
         this.StripMenuItemAsChild.Size = new System.Drawing.Size(185, 36);
         this.StripMenuItemAsChild.Text = "As &Child";
+        this.StripMenuItemAsChild.Click += new System.EventHandler(this.StripMenuItemAsChild_Click);
         // 
         // TextBoxLog
         // 
