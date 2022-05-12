@@ -25,6 +25,7 @@ internal static class Program
                 .SetMinimumLevel(LogLevel.Debug)
                 .AddSimpleConsole(options =>
                 {
+                    options.TimestampFormat = "HH:mm:ss.fff ";
                     options.IncludeScopes = true;
                 })
             ).Build();
@@ -38,6 +39,5 @@ internal static class Program
         // Application.SetCompatibleTextRenderingDefault(false);
 
         Application.Run(new FormMain(loggerFactory));
-        
     }
 }

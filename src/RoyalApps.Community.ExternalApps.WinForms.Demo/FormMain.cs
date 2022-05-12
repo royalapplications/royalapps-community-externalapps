@@ -7,26 +7,29 @@ namespace RoyalApps.Community.ExternalApps.WinForms.Demo;
 
 public partial class FormMain : Form
 {
-    private readonly ILoggerFactory loggerFactory;
-    private readonly ILogger<FormMain> logger;
+    private readonly ILoggerFactory _loggerFactory;
+    private readonly ILogger<FormMain> _logger;
 
-    private readonly Timer LogWriterTimer = new Timer();
+    private readonly Timer _logWriterTimer = new Timer();
 
     public FormMain(ILoggerFactory loggerFactory)
     {
         InitializeComponent();
-        
-        this.loggerFactory = loggerFactory;
-        logger = loggerFactory.CreateLogger<FormMain>();
 
-        LogWriterTimer.Tick += (sender, args) =>
+        _loggerFactory = loggerFactory;
+        _logger = loggerFactory.CreateLogger<FormMain>();
+
+        _logWriterTimer.Tick += (sender, args) =>
         {
-            TextBoxLog.Text = Program.ConsoleOutput.GetStringBuilder().ToString();
+            var text = Program.ConsoleOutput.GetStringBuilder().ToString();
+            if (text.Length == TextBoxLog.TextLength)
+                return;
+            TextBoxLog.Text = text;
             TextBoxLog.SelectionStart = TextBoxLog.TextLength;
             TextBoxLog.ScrollToCaret();
         };
-        LogWriterTimer.Interval = 500;
-        LogWriterTimer.Enabled = true;
+        _logWriterTimer.Interval = 500;
+        _logWriterTimer.Enabled = true;
         
         TabControlLeft.TabPages.Clear();
         TabControlRight.TabPages.Clear();
@@ -51,10 +54,13 @@ public partial class FormMain : Form
         if (sender is not ExternalAppHost {Parent: TabPage tabPage} externalAppHost)
             return;
 
+        if (tabPage.Parent is not TabControl tabControl)
+            return;
+        
         externalAppHost.ApplicationStarted -= ExternalApp_ApplicationStarted;
         externalAppHost.ApplicationClosed -= ExternalApp_ApplicationClosed;
 
-        TabControlLeft.TabPages.Remove(tabPage);
+        tabControl.TabPages.Remove(tabPage);
         //AddLogEntry($"Application closed: {externalAppHost}");
     }
 
@@ -77,15 +83,17 @@ public partial class FormMain : Form
     {
         if (string.IsNullOrWhiteSpace(externalAppConfiguration.Executable))
         {
-            logger.LogWarning("No executable specified");
+            _logger.LogWarning("No executable specified");
             return;
         }
         if (!File.Exists(externalAppConfiguration.Executable))
         {
-            logger.LogError("Executable not found: {Command}", externalAppConfiguration.Executable);
+            _logger.LogError("Executable not found: {Command}", externalAppConfiguration.Executable);
             return;
         }
 
+        Program.ConsoleOutput.GetStringBuilder().Clear();
+        
         var fileInfo = new FileInfo(externalAppConfiguration.Executable!);
         var caption = fileInfo.Name;
         
@@ -93,15 +101,16 @@ public partial class FormMain : Form
         var externalApp = new ExternalAppHost
         {
             Dock = DockStyle.Fill,
-            LoggerFactory = loggerFactory,
+            LoggerFactory = _loggerFactory,
             Parent = tabPage,
         };
         externalApp.ApplicationStarted += ExternalApp_ApplicationStarted;
         externalApp.ApplicationClosed += ExternalApp_ApplicationClosed;
 
         tabControl.TabPages.Add(tabPage);
+        tabControl.SelectedTab = tabPage;
 
-        logger.LogInformation("Starting application: {Command}", externalAppConfiguration.Executable);
+        _logger.LogInformation("Starting application: {Command}", externalAppConfiguration.Executable);
         externalApp.Start(externalAppConfiguration);
     }
 

@@ -1,4 +1,6 @@
-﻿namespace RoyalApps.Community.ExternalApps.WinForms.Demo;
+﻿using System.Windows.Forms;
+
+namespace RoyalApps.Community.ExternalApps.WinForms.Demo;
 
 partial class FormMain
 {
@@ -265,6 +267,7 @@ partial class FormMain
         this.TextBoxLog.ReadOnly = true;
         this.TextBoxLog.Size = new System.Drawing.Size(1470, 247);
         this.TextBoxLog.TabIndex = 0;
+        this.TextBoxLog.ScrollBars = ScrollBars.Both;
         // 
         // StatusStrip
         // 
@@ -286,8 +289,8 @@ partial class FormMain
         this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
         this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
         this.ClientSize = new System.Drawing.Size(1470, 868);
-        this.Controls.Add(this.StatusStrip);
         this.Controls.Add(this.SplitContainerMain);
+        this.Controls.Add(this.StatusStrip);
         this.Controls.Add(this.MenuStrip);
         this.MainMenuStrip = this.MenuStrip;
         this.Name = "FormMain";
