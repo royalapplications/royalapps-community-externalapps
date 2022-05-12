@@ -503,7 +503,7 @@ public class ExternalAppHost : UserControl
 
         var winEventProc = new WINEVENTPROC(WinEventProc);
 
-        // always add the delegate to the _winEventProcs list
+        // always add the delegate to the _winEventProcedures list
         // otherwise GC will dump this delegate and the hook fails
         _winEventProcedures.Add(winEventProc);
         const uint eventType = PInvoke.EVENT_OBJECT_NAMECHANGE;
@@ -512,7 +512,7 @@ public class ExternalAppHost : UserControl
             eventType,
             eventType,
             new HINSTANCE(IntPtr.Zero),
-            WinEventProc,
+            winEventProc,
             (uint) _externalApp.Process!.Id,
             0,
             PInvoke.WINEVENT_OUTOFCONTEXT);
