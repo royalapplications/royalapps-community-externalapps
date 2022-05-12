@@ -5,6 +5,7 @@ using RoyalApps.Community.ExternalApps.WinForms.WindowManagement;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Threading;
@@ -92,17 +93,29 @@ public class ExternalAppHost : UserControl
     /// </summary>
     public void EmbedApplication()
     {
-        if (_externalApp is {HasWindow: false})
+        var taskFactory = new TaskFactory();
+        taskFactory.StartNew(() => EmbedApplicationAsync(), TaskCreationOptions.LongRunning);
+    }
+
+    /// <summary>
+    /// Embeds the application.
+    /// </summary>
+    private async Task EmbedApplicationAsync(CancellationToken cancellationToken = default)
+    {
+        if (_externalApp is null or {HasWindow: false})
         {
             // process not found or application has been closed
             RaiseApplicationClosed();
             return;
         }
 
-        SetParent(_ownerHandle);
+        IsEmbedded = await SetParentAsync(_ownerHandle, _externalApp.WindowHandle, cancellationToken);
 
-        SetWindowPosition();
-        FocusApplication(false);
+        Invoke(() =>
+        {
+            SetWindowPosition();
+            FocusApplication(false);
+        });
     }
 
     /// <summary>
@@ -112,7 +125,7 @@ public class ExternalAppHost : UserControl
     public void Start(ExternalAppConfiguration configuration)
     {
         var taskFactory = new TaskFactory();
-        taskFactory.StartNew(() => StartAsync(configuration));
+        taskFactory.StartNew(() => StartAsync(configuration), TaskCreationOptions.LongRunning);
     }
 
     /// <inheritdoc />
@@ -361,13 +374,17 @@ public class ExternalAppHost : UserControl
 
     private async Task StartAsync(ExternalAppConfiguration configuration, CancellationToken cancellationToken = default)
     {
+        Logger.WithCallerInfo(log => log.LogDebug("Starting executable '{Executable}'", configuration.Executable));
         _externalApp = new ExternalApp(configuration, LoggerFactory);
         _externalApp.ProcessExited += ExternalApp_ProcessExited;
 
         try
         {
             await _externalApp.StartAsync(cancellationToken);
-            EmbedApplication();
+            Logger.WithCallerInfo(log => log.LogDebug("Embedding window for '{Executable}'", configuration.Executable));
+            if (!_externalApp.Configuration.StartExternal)
+                await EmbedApplicationAsync(cancellationToken);
+            
             Invoke(StartedSuccessful);
         }
         catch (Exception ex)
@@ -411,89 +428,64 @@ public class ExternalAppHost : UserControl
 
     private void StartedSuccessful()
     {
-        if (_externalApp != null && !_externalApp.Configuration.StartExternal)
-        {
-            try
-            {
-                // EmbedApplication();
-            }
-            catch (Exception ex)
-            {
-                Logger.LogWarning(ex, "Embedding application failed");
-            }
-        }
+        if (_externalApp is null or {IsRunning: false})
+            return;
 
         SetupHooks();
         SetWindowPosition();
         RaiseApplicationStarted();
     }
 
-    private void SetParent(HWND parentHandle)
+    private async Task<bool> SetParentAsync(HWND parentWindowHandle, HWND childWindowHandle, CancellationToken cancellationToken)
     {
-        if (_externalApp == null)
-            return;
-
         var retry = 0;
-        bool result;
+        bool success;
         
         // remember the original window style (currently not in use because application of old style doesn't always work)
-        _originalGwlStyle =
-            (WINDOW_STYLE) PInvoke.GetWindowLong(_externalApp.WindowHandle, WINDOW_LONG_PTR_INDEX.GWL_STYLE);
+        _originalGwlStyle = (WINDOW_STYLE) PInvoke.GetWindowLong(
+            childWindowHandle, 
+            WINDOW_LONG_PTR_INDEX.GWL_STYLE);
 
         // setting these styles don't work because keyboard input is broken afterwards
-        var newStyle =
-            _originalGwlStyle &
-            ~(WINDOW_STYLE.WS_GROUP |
-              WINDOW_STYLE.WS_TABSTOP)
-            | WINDOW_STYLE.WS_CHILD;
+        var newStyle = _originalGwlStyle & ~(WINDOW_STYLE.WS_GROUP | WINDOW_STYLE.WS_TABSTOP) | WINDOW_STYLE.WS_CHILD;
         
-        PInvoke.SetWindowLong(_externalApp.WindowHandle, WINDOW_LONG_PTR_INDEX.GWL_STYLE, (int) newStyle);
+        PInvoke.SetWindowLong(childWindowHandle, WINDOW_LONG_PTR_INDEX.GWL_STYLE, (int) newStyle);
 
         // this needs to run asynchronously to not block the UI thread
         do
         {
             try
             {
-                // BeginInvoke is needed here!
-                // When not executed at the end of the message pump, the SetParent call always returns '5' (Access Denied)
-                var asyncResult = BeginInvoke(new MethodInvoker(() =>
-                {
-                    // https://devblogs.microsoft.com/oldnewthing/?p=4683
-                    if (_externalApp != null)
-                        PInvoke.SetParent(_externalApp.WindowHandle, parentHandle);
-                }));
-
-                // we need to wait for the async code to finish and get the last win32 error code
-                EndInvoke(asyncResult);
-
+                PInvoke.SetParent(childWindowHandle, parentWindowHandle);
                 var lastWin32Exception = new Win32Exception();
-                result = lastWin32Exception.NativeErrorCode == 0;
+                success = lastWin32Exception.NativeErrorCode == 0;
 
-                Logger.LogDebug(lastWin32Exception,
-                    "SetParentInternal success: {Success}, Error Code: {NativeErrorCode}",
-                    result, lastWin32Exception.NativeErrorCode);
+                Logger.LogDebug(success ? null : lastWin32Exception,
+                    "SetParentAsync success: {Success}, Error Code: {NativeErrorCode}",
+                    success, lastWin32Exception.NativeErrorCode);
             }
             catch (Exception ex)
             {
-                result = false;
+                success = false;
                 Logger.LogDebug(ex, "SetParentInternal failed");
             }
 
-            if (result || retry > 10)
+            if (success || retry > 10)
                 break;
 
             retry++;
-            
-            Thread.Sleep(100);
+
+            await Task.Delay(100, cancellationToken);
         } while (true);
 
-        if (result)
+        if (success)
         {
-            _embeddedGwlStyle =
-                (WINDOW_STYLE) PInvoke.GetWindowLong(_externalApp.WindowHandle, WINDOW_LONG_PTR_INDEX.GWL_STYLE);
+            _embeddedGwlStyle = (WINDOW_STYLE) PInvoke.GetWindowLong(
+                childWindowHandle, 
+                WINDOW_LONG_PTR_INDEX.GWL_STYLE);
         }
 
-        IsEmbedded = result;
+        return success;
     }
 
     private void SetupHooks()
