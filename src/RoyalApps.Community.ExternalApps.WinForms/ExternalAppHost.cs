@@ -1,8 +1,7 @@
-﻿namespace RoyalApps.Community.ExternalApps.WinForms;
-
+﻿using RoyalApps.Community.ExternalApps.WinForms.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using WindowManagement;
+using RoyalApps.Community.ExternalApps.WinForms.WindowManagement;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -18,6 +17,8 @@ using Windows.Win32.Storage.Xps;
 using Windows.Win32.UI.Accessibility;
 using Windows.Win32.UI.WindowsAndMessaging;
 
+namespace RoyalApps.Community.ExternalApps.WinForms;
+
 /// <summary>
 /// The host control which can embed external application windows.
 /// </summary>
@@ -26,7 +27,7 @@ public class ExternalAppHost : UserControl
     private readonly List<IntPtr> _winEventHooks = new();
 
     // ReSharper disable once CollectionNeverQueried.Local
-    private readonly List<WINEVENTPROC> _winEventProcs = new();
+    private readonly List<WINEVENTPROC> _winEventProcedures = new();
 
     private WINDOW_STYLE _embeddedGwlStyle;
     private WINDOW_STYLE _originalGwlStyle;
@@ -34,6 +35,29 @@ public class ExternalAppHost : UserControl
 
     private ExternalApp? _externalApp;
     private ILogger? _logger;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the external application is embedded or not. 
+    /// </summary>
+    public bool IsEmbedded { get; set; }
+
+    /// <summary>
+    /// Gets or sets the <see cref="ILoggerFactory" /> used to create instances of <see cref="ILogger" />.
+    /// Defaults to <see cref="NullLoggerFactory" />.
+    /// </summary>
+    public ILoggerFactory LoggerFactory { get; set; } = NullLoggerFactory.Instance;
+
+    /// <summary>
+    /// Gets the logger from the configured <see cref="LoggerFactory"/>.
+    /// </summary>
+    protected ILogger Logger
+    {
+        get
+        {
+            _logger ??= LoggerFactory.CreateLogger<ExternalAppHost>();
+            return _logger;
+        }
+    }
 
     /// <summary>
     /// Fired after the application has been activated.
@@ -54,24 +78,6 @@ public class ExternalAppHost : UserControl
     /// Fired when the application's window title has changed.
     /// </summary>
     public event EventHandler<EventArgs>? WindowTitleChanged;
-
-    /// <summary>
-    /// Gets or sets the <see cref="ILoggerFactory" /> used to create instances of <see cref="ILogger" />.
-    /// Defaults to <see cref="NullLoggerFactory" />.
-    /// </summary>
-    public ILoggerFactory LoggerFactory { get; set; } = NullLoggerFactory.Instance;
-
-    /// <summary>
-    /// Gets the logger from the configured <see cref="LoggerFactory"/>.
-    /// </summary>
-    protected ILogger Logger
-    {
-        get
-        {
-            _logger ??= LoggerFactory.CreateLogger<ExternalAppHost>();
-            return _logger;
-        }
-    }
 
     /// <summary>
     /// Closes the external application
@@ -130,7 +136,7 @@ public class ExternalAppHost : UserControl
 
             _winEventHooks.ForEach(delegate(IntPtr hook) { PInvoke.UnhookWinEvent(new HWINEVENTHOOK(hook)); });
             _winEventHooks.Clear();
-            _winEventProcs.Clear();
+            _winEventProcedures.Clear();
         }
 
         base.Dispose(disposing);
@@ -139,10 +145,10 @@ public class ExternalAppHost : UserControl
     /// <summary>
     /// Focuses the external application. 
     /// </summary>
-    /// <param name="externalWindowActivation"></param>
-    public void FocusApplication(bool externalWindowActivation)
+    /// <param name="force">If true, always bring external application to foreground and focus the window, even if it is not embedded.</param>
+    public void FocusApplication(bool force)
     {
-        OnFocusApplication(externalWindowActivation);
+        OnFocusApplication(force);
     }
 
     /// <summary>
@@ -158,7 +164,7 @@ public class ExternalAppHost : UserControl
         PInvoke.SetParent(handle, new HWND(IntPtr.Zero));
         PInvoke.SetWindowLong(handle, WINDOW_LONG_PTR_INDEX.GWL_STYLE, (int)_originalGwlStyle);
 
-        _externalApp.IsEmbedded = false;
+        IsEmbedded = false;
     }
 
     /// <summary>
@@ -263,13 +269,13 @@ public class ExternalAppHost : UserControl
     /// <summary>
     /// Handles focusing of the external application. 
     /// </summary>
-    /// <param name="externalWindowActivation"></param>
-    protected virtual void OnFocusApplication(bool externalWindowActivation)
+    /// <param name="force">If true, always bring external application to foreground and focus the window, even if it is not embedded.</param>
+    protected virtual void OnFocusApplication(bool force)
     {
         if (_externalApp is null or {HasWindow: false})
             return;
 
-        if (!_externalApp.IsEmbedded && !externalWindowActivation)
+        if (!IsEmbedded && !force)
             return;
 
         Focus();
@@ -365,8 +371,8 @@ public class ExternalAppHost : UserControl
         }
         catch (Exception e)
         {
-            Console.WriteLine(e);
-            throw;
+            _logger?.LogError(e, "Failed to start external application '{Command}'", configuration.Executable);
+            Invoke(RaiseApplicationClosed);
         }
     }
 
@@ -380,7 +386,7 @@ public class ExternalAppHost : UserControl
 
         try
         {
-            if (_externalApp is {IsEmbedded: true})
+            if (_externalApp is not null && IsEmbedded)
             {
                 SetWindowPosition(0, 0, Width, Height);
             }
@@ -469,7 +475,7 @@ public class ExternalAppHost : UserControl
                     _externalApp.WindowHandle, WINDOW_LONG_PTR_INDEX.GWL_STYLE);
             }
 
-            _externalApp.IsEmbedded = result.Succeeded;
+            IsEmbedded = result.Succeeded;
         }
 
         return result;
@@ -508,7 +514,7 @@ public class ExternalAppHost : UserControl
 
         // always add the delegate to the _winEventProcs list
         // otherwise GC will dump this delegate and the hook fails
-        _winEventProcs.Add(winEventProc);
+        _winEventProcedures.Add(winEventProc);
         var eventType = PInvoke.EVENT_OBJECT_NAMECHANGE;
 
         var hook = PInvoke.SetWinEventHook(

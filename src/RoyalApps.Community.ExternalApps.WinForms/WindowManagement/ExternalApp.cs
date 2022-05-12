@@ -1,3 +1,5 @@
+using RoyalApps.Community.ExternalApps.WinForms.Extensions;
+
 namespace RoyalApps.Community.ExternalApps.WinForms.WindowManagement;
 
 using System;
@@ -45,11 +47,6 @@ internal sealed class ExternalApp : IDisposable
     /// Gets a value indicating whether a window handle has been set.
     /// </summary>
     public bool HasWindow => WindowHandle.Value != IntPtr.Zero;
-
-    /// <summary>
-    /// Gets or sets a value indicating whether the external application is embedded or not. 
-    /// </summary>
-    public bool IsEmbedded { get; set; }
 
     /// <summary>
     /// Gets a value indicating whether the external application's process is running.
@@ -205,7 +202,7 @@ internal sealed class ExternalApp : IDisposable
         // Prepare Process for Execution and Start
         var process = StartProcess(configuration);
         if (process == null)
-            throw new InvalidOperationException($"Failed to start process \"{configuration.Command}\"");
+            throw new InvalidOperationException($"Failed to start process \"{configuration.Executable}\"");
         
         try
         {
@@ -271,7 +268,7 @@ internal sealed class ExternalApp : IDisposable
     private static Process? StartProcess(ExternalAppConfiguration configuration)
     {
         var processStartInfo = new ProcessStartInfo(
-            configuration.Command ?? string.Empty,
+            configuration.Executable ?? string.Empty,
             configuration.Arguments ?? string.Empty)
         {
             WindowStyle = configuration.StartHidden && !configuration.StartExternal

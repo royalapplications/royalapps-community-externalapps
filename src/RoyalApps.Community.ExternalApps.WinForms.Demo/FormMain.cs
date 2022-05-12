@@ -60,12 +60,12 @@ public partial class FormMain : Form
 
     private void StripButtonAddLeft_Click(object sender, EventArgs e)
     {
-        AddApplication(TabControlLeft, new ExternalAppConfiguration {Command = StripTextBoxQuickEmbed.Text});
+        AddApplication(TabControlLeft, new ExternalAppConfiguration {Executable = StripTextBoxQuickEmbed.Text});
     }
 
     private void StripButtonAddRight_Click(object sender, EventArgs e)
     {
-        AddApplication(TabControlRight, new ExternalAppConfiguration {Command = StripTextBoxQuickEmbed.Text});
+        AddApplication(TabControlRight, new ExternalAppConfiguration {Executable = StripTextBoxQuickEmbed.Text});
     }
 
     private void StripMenuItemAsChild_Click(object? sender, EventArgs e)
@@ -75,18 +75,18 @@ public partial class FormMain : Form
 
     private void AddApplication(TabControl tabControl, ExternalAppConfiguration externalAppConfiguration)
     {
-        if (string.IsNullOrWhiteSpace(externalAppConfiguration.Command))
+        if (string.IsNullOrWhiteSpace(externalAppConfiguration.Executable))
         {
             logger.LogWarning("No executable specified");
             return;
         }
-        if (!File.Exists(externalAppConfiguration.Command))
+        if (!File.Exists(externalAppConfiguration.Executable))
         {
-            logger.LogError("Executable not found: {Command}", externalAppConfiguration.Command);
+            logger.LogError("Executable not found: {Command}", externalAppConfiguration.Executable);
             return;
         }
 
-        var fileInfo = new FileInfo(externalAppConfiguration.Command!);
+        var fileInfo = new FileInfo(externalAppConfiguration.Executable!);
         var caption = fileInfo.Name;
         
         var tabPage = new TabPage(caption);
@@ -101,7 +101,7 @@ public partial class FormMain : Form
 
         tabControl.TabPages.Add(tabPage);
 
-        logger.LogInformation("Starting application: {Command}", externalAppConfiguration.Command);
+        logger.LogInformation("Starting application: {Command}", externalAppConfiguration.Executable);
         externalApp.Start(externalAppConfiguration);
     }
 

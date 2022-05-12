@@ -1,8 +1,8 @@
-﻿using Microsoft.Extensions.Logging;
-using System;
+﻿using System;
 using System.Runtime.CompilerServices;
+using Microsoft.Extensions.Logging;
 
-namespace RoyalApps.Community.ExternalApps.WinForms;
+namespace RoyalApps.Community.ExternalApps.WinForms.Extensions;
 
 internal static class LoggerExtensions
 {

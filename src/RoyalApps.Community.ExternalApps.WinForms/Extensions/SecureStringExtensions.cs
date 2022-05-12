@@ -1,7 +1,7 @@
-﻿namespace RoyalApps.Community.ExternalApps.WinForms;
-
-using System;
+﻿using System;
 using System.Security;
+
+namespace RoyalApps.Community.ExternalApps.WinForms.Extensions;
 
 internal static class SecureStringExtensions
 {
