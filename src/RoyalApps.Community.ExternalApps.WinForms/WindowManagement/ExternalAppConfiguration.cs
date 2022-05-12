@@ -104,4 +104,9 @@ public class ExternalAppConfiguration
     /// Gets or sets a value indicating whether or not to kill the process when the app is closed.
     /// </summary>
     public bool KillOnClose { get; set; }
+
+    /// <summary>
+    /// 
+    /// </summary>
+    public bool AsChild { get; set; }
 }

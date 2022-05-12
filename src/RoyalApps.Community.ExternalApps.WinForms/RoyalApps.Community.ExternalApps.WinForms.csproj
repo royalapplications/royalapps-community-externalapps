@@ -56,4 +56,11 @@
         <Reference Include="System.Management" />
     </ItemGroup>
 
+    <ItemGroup>
+      <None Remove="lib\swe.dll" />
+      <Content Include="lib\swe.dll">
+        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      </Content>
+    </ItemGroup>
+
 </Project>

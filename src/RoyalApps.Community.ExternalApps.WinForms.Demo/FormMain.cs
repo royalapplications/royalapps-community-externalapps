@@ -35,6 +35,19 @@ public partial class FormMain : Form
         TabControlRight.TabPages.Clear();
     }
 
+    /// <inheritdoc />
+    protected override void OnLoad(EventArgs e)
+    {
+        base.OnLoad(e);
+        ExternalAppsNative.InitShl();
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        base.OnClosed(e);
+        ExternalAppsNative.DoneShl();
+    }
+
     private void MenuItemExit_Click(object sender, EventArgs e)
     {
         // TODO: close all apps
@@ -51,12 +64,9 @@ public partial class FormMain : Form
 
     private void ExternalApp_ApplicationClosed(object? sender, EventArgs e)
     {
-        if (sender is not ExternalAppHost {Parent: TabPage tabPage} externalAppHost)
+        if (sender is not ExternalAppHost {Parent: TabPage {Parent: TabControl tabControl} tabPage} externalAppHost)
             return;
 
-        if (tabPage.Parent is not TabControl tabControl)
-            return;
-        
         externalAppHost.ApplicationStarted -= ExternalApp_ApplicationStarted;
         externalAppHost.ApplicationClosed -= ExternalApp_ApplicationClosed;
 
@@ -93,6 +103,8 @@ public partial class FormMain : Form
         }
 
         Program.ConsoleOutput.GetStringBuilder().Clear();
+
+        externalAppConfiguration.AsChild = StripMenuItemAsChild.Checked;
         
         var fileInfo = new FileInfo(externalAppConfiguration.Executable!);
         var caption = fileInfo.Name;

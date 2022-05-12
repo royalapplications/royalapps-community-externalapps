@@ -109,7 +109,15 @@ public class ExternalAppHost : UserControl
             return;
         }
 
-        IsEmbedded = await SetParentAsync(_ownerHandle, _externalApp.WindowHandle, cancellationToken);
+        if (_externalApp.Configuration.AsChild)
+        {
+            IsEmbedded = await SetParentAsync(_ownerHandle, _externalApp.WindowHandle, cancellationToken);
+        }
+        else
+        {
+            ExternalAppsNative.CreateShlWnd(_ownerHandle, _externalApp.WindowHandle, ClientSize.Width, ClientSize.Height);
+            IsEmbedded = true;
+        }
 
         Invoke(() =>
         {
