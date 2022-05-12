@@ -1,16 +1,33 @@
 using System;
 using System.IO;
-using System.Net;
-using System.Threading;
 using System.Windows.Forms;
+using Microsoft.Extensions.Logging;
 
 namespace RoyalApps.Community.ExternalApps.WinForms.Demo;
 
 public partial class FormMain : Form
 {
-    public FormMain()
+    private readonly ILoggerFactory loggerFactory;
+    private readonly ILogger<FormMain> logger;
+
+    private readonly Timer LogWriterTimer = new Timer();
+
+    public FormMain(ILoggerFactory loggerFactory)
     {
         InitializeComponent();
+        
+        this.loggerFactory = loggerFactory;
+        logger = loggerFactory.CreateLogger<FormMain>();
+
+        LogWriterTimer.Tick += (sender, args) =>
+        {
+            TextBoxLog.Text = Program.ConsoleOutput.GetStringBuilder().ToString();
+            TextBoxLog.SelectionStart = TextBoxLog.TextLength;
+            TextBoxLog.ScrollToCaret();
+        };
+        LogWriterTimer.Interval = 500;
+        LogWriterTimer.Enabled = true;
+        
         TabControlLeft.TabPages.Clear();
         TabControlRight.TabPages.Clear();
     }
@@ -60,12 +77,12 @@ public partial class FormMain : Form
     {
         if (string.IsNullOrWhiteSpace(externalAppConfiguration.Command))
         {
-            AddLogEntry($"No executable specified");
+            logger.LogWarning("No executable specified");
             return;
         }
         if (!File.Exists(externalAppConfiguration.Command))
         {
-            AddLogEntry($"Executable not found: {externalAppConfiguration.Command}");
+            logger.LogError("Executable not found: {Command}", externalAppConfiguration.Command);
             return;
         }
 
@@ -76,6 +93,7 @@ public partial class FormMain : Form
         var externalApp = new ExternalAppHost
         {
             Dock = DockStyle.Fill,
+            LoggerFactory = loggerFactory,
             Parent = tabPage,
         };
         externalApp.ApplicationStarted += ExternalApp_ApplicationStarted;
@@ -83,13 +101,8 @@ public partial class FormMain : Form
 
         tabControl.TabPages.Add(tabPage);
 
-        AddLogEntry($"Starting application: {externalAppConfiguration.Command}");
+        logger.LogInformation("Starting application: {Command}", externalAppConfiguration.Command);
         externalApp.Start(externalAppConfiguration);
-    }
-
-    private void AddLogEntry(string message)
-    {
-        TextBoxLog.Text += $@"{Environment.NewLine}{DateTime.Now.ToShortTimeString()}: {message}";
     }
 
 }
