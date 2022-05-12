@@ -136,7 +136,6 @@ internal sealed class ExternalApp : IDisposable
     /// Creates a task which starts the external application's process.
     /// </summary>
     /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete.</param>
-    /// <returns>A <see cref="NativeResult"/> task indicating whether the application has been started successfully.</returns>
     /// <exception cref="InvalidOperationException">Thrown when the application has already been started.</exception>
     public async Task StartAsync(CancellationToken cancellationToken)
     {

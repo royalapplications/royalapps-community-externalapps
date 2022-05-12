@@ -90,23 +90,19 @@ public class ExternalAppHost : UserControl
     /// <summary>
     /// Embeds the application.
     /// </summary>
-    /// <returns>A <see cref="NativeResult"/> indicating whether the operation was successful.</returns>
-    public NativeResult EmbedApplication()
+    public void EmbedApplication()
     {
         if (_externalApp is {HasWindow: false})
         {
             // process not found or application has been closed
             RaiseApplicationClosed();
-            return NativeResult.Fail();
+            return;
         }
 
-        var result = SetParent(_ownerHandle);
-        if (!result.Succeeded)
-            return result;
+        SetParent(_ownerHandle);
 
         SetWindowPosition();
         FocusApplication(false);
-        return NativeResult.Success;
     }
 
     /// <summary>
@@ -132,7 +128,11 @@ public class ExternalAppHost : UserControl
         if (disposing)
         {
             if (_externalApp != null)
+            {
                 _externalApp.ProcessExited -= ExternalApp_ProcessExited;
+                _externalApp.Dispose();
+                _externalApp = null;
+            }
 
             _winEventHooks.ForEach(delegate(IntPtr hook) { PInvoke.UnhookWinEvent(new HWINEVENTHOOK(hook)); });
             _winEventHooks.Clear();
@@ -140,15 +140,6 @@ public class ExternalAppHost : UserControl
         }
 
         base.Dispose(disposing);
-    }
-
-    /// <summary>
-    /// Focuses the external application. 
-    /// </summary>
-    /// <param name="force">If true, always bring external application to foreground and focus the window, even if it is not embedded.</param>
-    public void FocusApplication(bool force)
-    {
-        OnFocusApplication(force);
     }
 
     /// <summary>
@@ -162,9 +153,18 @@ public class ExternalAppHost : UserControl
         var handle = _externalApp.WindowHandle;
 
         PInvoke.SetParent(handle, new HWND(IntPtr.Zero));
-        PInvoke.SetWindowLong(handle, WINDOW_LONG_PTR_INDEX.GWL_STYLE, (int)_originalGwlStyle);
+        PInvoke.SetWindowLong(handle, WINDOW_LONG_PTR_INDEX.GWL_STYLE, (int) _originalGwlStyle);
 
         IsEmbedded = false;
+    }
+
+    /// <summary>
+    /// Focuses the external application. 
+    /// </summary>
+    /// <param name="force">If true, always bring external application to foreground and focus the window, even if it is not embedded.</param>
+    public void FocusApplication(bool force)
+    {
+        OnFocusApplication(force);
     }
 
     /// <summary>
@@ -278,7 +278,7 @@ public class ExternalAppHost : UserControl
         if (!IsEmbedded && !force)
             return;
 
-        Focus();
+        Invoke(Focus);
 
         PInvoke.SetForegroundWindow(_externalApp.WindowHandle);
         PInvoke.SetFocus(_externalApp.WindowHandle);
@@ -301,7 +301,7 @@ public class ExternalAppHost : UserControl
     /// <inheritdoc />
     protected override void WndProc(ref Message m)
     {
-        switch ((uint)m.Msg)
+        switch ((uint) m.Msg)
         {
             case PInvoke.WM_MOUSEACTIVATE:
             case PInvoke.WM_LBUTTONDOWN:
@@ -367,12 +367,13 @@ public class ExternalAppHost : UserControl
         try
         {
             await _externalApp.StartAsync(cancellationToken);
+            EmbedApplication();
             Invoke(StartedSuccessful);
         }
-        catch (Exception e)
+        catch (Exception ex)
         {
-            _logger?.LogError(e, "Failed to start external application '{Command}'", configuration.Executable);
-            Invoke(RaiseApplicationClosed);
+            Logger.LogWarning(ex, "{Method} failed starting '{Executable}'",
+                nameof(StartAsync), configuration.Executable);
         }
     }
 
@@ -410,12 +411,11 @@ public class ExternalAppHost : UserControl
 
     private void StartedSuccessful()
     {
-        var result = NativeResult.Fail();
         if (_externalApp != null && !_externalApp.Configuration.StartExternal)
         {
             try
             {
-                result = EmbedApplication();
+                // EmbedApplication();
             }
             catch (Exception ex)
             {
@@ -423,86 +423,77 @@ public class ExternalAppHost : UserControl
             }
         }
 
-        if (!result.Succeeded)
-            Logger.LogWarning(result.Exception, "StartApplicationInternalAsync raised an error");
-
         SetupHooks();
         SetWindowPosition();
         RaiseApplicationStarted();
     }
 
-    private NativeResult SetParent(HWND parentHandle)
+    private void SetParent(HWND parentHandle)
     {
-        var result = NativeResult.Fail();
+        if (_externalApp == null)
+            return;
+
         var retry = 0;
-
+        bool result;
+        
         // remember the original window style (currently not in use because application of old style doesn't always work)
-        if (_externalApp != null)
+        _originalGwlStyle =
+            (WINDOW_STYLE) PInvoke.GetWindowLong(_externalApp.WindowHandle, WINDOW_LONG_PTR_INDEX.GWL_STYLE);
+
+        // setting these styles don't work because keyboard input is broken afterwards
+        var newStyle =
+            _originalGwlStyle &
+            ~(WINDOW_STYLE.WS_GROUP |
+              WINDOW_STYLE.WS_TABSTOP)
+            | WINDOW_STYLE.WS_CHILD;
+        
+        PInvoke.SetWindowLong(_externalApp.WindowHandle, WINDOW_LONG_PTR_INDEX.GWL_STYLE, (int) newStyle);
+
+        // this needs to run asynchronously to not block the UI thread
+        do
         {
-            _originalGwlStyle = (WINDOW_STYLE)PInvoke.GetWindowLong(_externalApp.WindowHandle, WINDOW_LONG_PTR_INDEX.GWL_STYLE);
-
-            // setting these styles don't work because keyboard input is broken afterwards
-            var newStyle =
-                _originalGwlStyle &
-                ~(WINDOW_STYLE.WS_GROUP |
-                  WINDOW_STYLE.WS_TABSTOP)
-                | WINDOW_STYLE.WS_CHILD;
-            PInvoke.SetWindowLong(_externalApp.WindowHandle, WINDOW_LONG_PTR_INDEX.GWL_STYLE, (int)newStyle);
-
-            // this needs to run asynchronously to not block the UI thread
-            do
+            try
             {
-                try
+                // BeginInvoke is needed here!
+                // When not executed at the end of the message pump, the SetParent call always returns '5' (Access Denied)
+                var asyncResult = BeginInvoke(new MethodInvoker(() =>
                 {
-                    result = SetParentInternal(parentHandle);
-                }
-                catch (Exception ex)
-                {
-                    result = NativeResult.Fail(ex);
-                    Logger.LogDebug(ex, "SetParentInternal failed");
-                }
+                    // https://devblogs.microsoft.com/oldnewthing/?p=4683
+                    if (_externalApp != null)
+                        PInvoke.SetParent(_externalApp.WindowHandle, parentHandle);
+                }));
 
-                if (result.Succeeded || retry > 10)
-                    break;
+                // we need to wait for the async code to finish and get the last win32 error code
+                EndInvoke(asyncResult);
 
-                retry++;
-                Thread.Sleep(100);
-            } while (true);
+                var lastWin32Exception = new Win32Exception();
+                result = lastWin32Exception.NativeErrorCode == 0;
 
-            if (result.Succeeded)
+                Logger.LogDebug(lastWin32Exception,
+                    "SetParentInternal success: {Success}, Error Code: {NativeErrorCode}",
+                    result, lastWin32Exception.NativeErrorCode);
+            }
+            catch (Exception ex)
             {
-                _embeddedGwlStyle = (WINDOW_STYLE)PInvoke.GetWindowLong(
-                    _externalApp.WindowHandle, WINDOW_LONG_PTR_INDEX.GWL_STYLE);
+                result = false;
+                Logger.LogDebug(ex, "SetParentInternal failed");
             }
 
-            IsEmbedded = result.Succeeded;
+            if (result || retry > 10)
+                break;
+
+            retry++;
+            
+            Thread.Sleep(100);
+        } while (true);
+
+        if (result)
+        {
+            _embeddedGwlStyle =
+                (WINDOW_STYLE) PInvoke.GetWindowLong(_externalApp.WindowHandle, WINDOW_LONG_PTR_INDEX.GWL_STYLE);
         }
 
-        return result;
-    }
-
-    private NativeResult SetParentInternal(HWND parentHandle)
-    {
-        // BeginInvoke is needed here!
-        // When not executed at the end of the message pump, the SetParent call always returns '5' (Access Denied)
-        var asyncResult = BeginInvoke(new MethodInvoker(() =>
-        {
-            // https://devblogs.microsoft.com/oldnewthing/?p=4683
-            if (_externalApp != null)
-                PInvoke.SetParent(_externalApp.WindowHandle, parentHandle);
-        }));
-
-        // we need to wait for the async code to finish and get the last win32 error code
-        EndInvoke(asyncResult);
-
-        var lastWin32Exception = new Win32Exception();
-        var success = lastWin32Exception.NativeErrorCode == 0;
-
-        Logger.LogDebug(lastWin32Exception, "SetParentInternal success: {Success}, Error Code: {NativeErrorCode}", success, lastWin32Exception.NativeErrorCode);
-
-        return success
-            ? NativeResult.Success
-            : NativeResult.Fail(lastWin32Exception);
+        IsEmbedded = result;
     }
 
     private void SetupHooks()
@@ -515,14 +506,14 @@ public class ExternalAppHost : UserControl
         // always add the delegate to the _winEventProcs list
         // otherwise GC will dump this delegate and the hook fails
         _winEventProcedures.Add(winEventProc);
-        var eventType = PInvoke.EVENT_OBJECT_NAMECHANGE;
+        const uint eventType = PInvoke.EVENT_OBJECT_NAMECHANGE;
 
         var hook = PInvoke.SetWinEventHook(
             eventType,
             eventType,
             new HINSTANCE(IntPtr.Zero),
             WinEventProc,
-            (uint)_externalApp.Process!.Id,
+            (uint) _externalApp.Process!.Id,
             0,
             PInvoke.WINEVENT_OUTOFCONTEXT);
 
@@ -530,17 +521,20 @@ public class ExternalAppHost : UserControl
     }
 
     // ReSharper disable once IdentifierTypo
-    private void WinEventProc(HWINEVENTHOOK hWinEventHook, uint eventType, HWND hWnd, int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
+    private void WinEventProc(HWINEVENTHOOK hWinEventHook, uint eventType, HWND hWnd, int idObject, int idChild,
+        uint dwEventThread, uint dwmsEventTime)
     {
-        Logger.WithCallerInfo(logger => logger.LogDebug("WinEventProc: EventType: {EventType}, Window Handle: {WindowHandle}, idObject: {IdObject}, idChild: {IdChild}", 
+        Logger.WithCallerInfo(logger => logger.LogDebug(
+            "WinEventProc: EventType: {EventType}, Window Handle: {WindowHandle}, idObject: {IdObject}, idChild: {IdChild}",
             eventType, hWnd, idObject, idChild));
-            
+
         if (_externalApp == null)
             return;
 
         if (_externalApp.WindowHandle != hWnd)
         {
-            Logger.WithCallerInfo(logger => logger.LogDebug("WinEventProc: exiting because WindowHandle ({AppWindowHandle}) != hWnd ({WindowHandle})", 
+            Logger.WithCallerInfo(logger => logger.LogDebug(
+                "WinEventProc: exiting because WindowHandle ({AppWindowHandle}) != hWnd ({WindowHandle})",
                 _externalApp.WindowHandle, hWnd));
             return;
         }
@@ -548,7 +542,8 @@ public class ExternalAppHost : UserControl
         switch (eventType)
         {
             case PInvoke.EVENT_OBJECT_NAMECHANGE:
-                Logger.WithCallerInfo(logger => logger.LogDebug("WinEventProc: EVENT_OBJECT_NAMECHANGE: {WindowTitle}", _externalApp.GetWindowTitle()));
+                Logger.WithCallerInfo(logger => logger.LogDebug("WinEventProc: EVENT_OBJECT_NAMECHANGE: {WindowTitle}",
+                    _externalApp.GetWindowTitle()));
                 Invoke(RaiseWindowTitleChanged);
                 break;
         }
