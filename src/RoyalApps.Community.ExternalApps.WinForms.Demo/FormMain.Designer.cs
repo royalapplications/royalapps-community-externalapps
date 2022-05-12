@@ -214,6 +214,7 @@ partial class FormMain
         // 
         this.StripTextBoxQuickEmbed.Name = "StripTextBoxQuickEmbed";
         this.StripTextBoxQuickEmbed.Size = new System.Drawing.Size(200, 39);
+        this.StripTextBoxQuickEmbed.Text = "c:\\windows\\System32\\cmd.exe";
         // 
         // StripDropDownButtonAdd
         // 
@@ -251,8 +252,8 @@ partial class FormMain
         // 
         // StripMenuItemAsChild
         // 
-        this.StripMenuItemAsChild.Checked = true;
-        this.StripMenuItemAsChild.CheckState = System.Windows.Forms.CheckState.Checked;
+        this.StripMenuItemAsChild.Checked = false;
+        this.StripMenuItemAsChild.CheckState = System.Windows.Forms.CheckState.Unchecked;
         this.StripMenuItemAsChild.Name = "StripMenuItemAsChild";
         this.StripMenuItemAsChild.Size = new System.Drawing.Size(185, 36);
         this.StripMenuItemAsChild.Text = "As &Child";
