@@ -117,6 +117,7 @@ partial class FormMain
         this.TabControlLeft.SelectedIndex = 0;
         this.TabControlLeft.Size = new System.Drawing.Size(725, 538);
         this.TabControlLeft.TabIndex = 1;
+        this.TabControlLeft.MouseUp += new MouseEventHandler(this.TabControl_MouseUp);
         // 
         // tabPage1
         // 
@@ -174,6 +175,7 @@ partial class FormMain
         this.TabControlRight.SelectedIndex = 0;
         this.TabControlRight.Size = new System.Drawing.Size(741, 538);
         this.TabControlRight.TabIndex = 0;
+        this.TabControlRight.MouseUp += new MouseEventHandler(this.TabControl_MouseUp);
         // 
         // tabPage2
         // 

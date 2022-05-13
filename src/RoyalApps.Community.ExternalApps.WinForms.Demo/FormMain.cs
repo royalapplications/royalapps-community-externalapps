@@ -2,6 +2,8 @@ using System;
 using System.IO;
 using System.Windows.Forms;
 using Microsoft.Extensions.Logging;
+using RoyalApps.Community.ExternalApps.WinForms.Demo.Extensions;
+using RoyalApps.Community.ExternalApps.WinForms.WindowManagement;
 
 namespace RoyalApps.Community.ExternalApps.WinForms.Demo;
 
@@ -10,7 +12,7 @@ public partial class FormMain : Form
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<FormMain> _logger;
 
-    private readonly Timer _logWriterTimer = new Timer();
+    private readonly Timer _logWriterTimer = new();
 
     public FormMain(ILoggerFactory loggerFactory)
     {
@@ -19,7 +21,7 @@ public partial class FormMain : Form
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<FormMain>();
 
-        _logWriterTimer.Tick += (sender, args) =>
+        _logWriterTimer.Tick += (_, _) =>
         {
             var text = Program.ConsoleOutput.GetStringBuilder().ToString();
             if (text.Length == TextBoxLog.TextLength)
@@ -35,22 +37,8 @@ public partial class FormMain : Form
         TabControlRight.TabPages.Clear();
     }
 
-    /// <inheritdoc />
-    protected override void OnLoad(EventArgs e)
-    {
-        base.OnLoad(e);
-        ExternalApps.Initialize();
-    }
-
-    protected override void OnClosed(EventArgs e)
-    {
-        base.OnClosed(e);
-        ExternalApps.Cleanup();
-    }
-
     private void MenuItemExit_Click(object sender, EventArgs e)
     {
-        // TODO: close all apps
         Close();
     }
 
@@ -71,7 +59,6 @@ public partial class FormMain : Form
         externalAppHost.ApplicationClosed -= ExternalApp_ApplicationClosed;
 
         tabControl.TabPages.Remove(tabPage);
-        //AddLogEntry($"Application closed: {externalAppHost}");
     }
 
     private void StripButtonAddLeft_Click(object sender, EventArgs e)
@@ -104,8 +91,9 @@ public partial class FormMain : Form
 
         Program.ConsoleOutput.GetStringBuilder().Clear();
 
-        externalAppConfiguration.AsChild = StripMenuItemAsChild.Checked;
-        externalAppConfiguration.StartHidden = false;
+        externalAppConfiguration.EmbedMethod = StripMenuItemAsChild.Checked 
+            ? EmbedMethod.Control 
+            : EmbedMethod.Window;
         
         var fileInfo = new FileInfo(externalAppConfiguration.Executable!);
         var caption = fileInfo.Name;
@@ -127,4 +115,19 @@ public partial class FormMain : Form
         externalApp.Start(externalAppConfiguration);
     }
 
+    private void TabControl_MouseUp(object? sender, MouseEventArgs e)
+    {
+        if (sender is not TabControl tabControl)
+            return;
+        var tabIndex = tabControl.GetTabIndex(e.Location);
+        if (tabIndex == -1)
+            return;
+
+        _logger.LogInformation("Tab: {TabIndex} was selected", tabIndex);
+
+        var tab = tabControl.TabPages[tabIndex];
+        if (tab.Controls[0] is ExternalAppHost externalAppHost)
+            BeginInvoke(externalAppHost.Focus);
+    }
+    
 }

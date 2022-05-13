@@ -4,7 +4,6 @@ using System.Windows.Forms;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Console;
 
 namespace RoyalApps.Community.ExternalApps.WinForms.Demo;
 
@@ -35,9 +34,9 @@ internal static class Program
         // To customize application configuration such as set high DPI settings or default font,
         // see https://aka.ms/applicationconfiguration.
         ApplicationConfiguration.Initialize();
-        // Application.EnableVisualStyles();
-        // Application.SetCompatibleTextRenderingDefault(false);
-
+        ExternalApps.Initialize();
         Application.Run(new FormMain(loggerFactory));
+        ExternalApps.Cleanup();
+
     }
 }
