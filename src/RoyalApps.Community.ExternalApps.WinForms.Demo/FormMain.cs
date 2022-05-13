@@ -39,13 +39,13 @@ public partial class FormMain : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
-        ExternalAppsNative.InitShl();
+        ExternalApps.Initialize();
     }
 
     protected override void OnClosed(EventArgs e)
     {
         base.OnClosed(e);
-        ExternalAppsNative.DoneShl();
+        ExternalApps.Cleanup();
     }
 
     private void MenuItemExit_Click(object sender, EventArgs e)

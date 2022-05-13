@@ -1,4 +1,6 @@
 AdjustWindowRectEx
+AssignProcessToJobObject
+CreateJobObject
 EnumDesktopWindows
 GetMessage
 GetWindowLong
@@ -13,6 +15,7 @@ PrintWindow
 SendMessage
 SetFocus
 SetForegroundWindow
+SetInformationJobObject
 SetParent
 SetWindowLong
 SetWinEventHook
@@ -27,3 +30,5 @@ WM_SETFOCUS
 EVENT_OBJECT_NAMECHANGE
 
 WINEVENT_OUTOFCONTEXT
+
+JOBOBJECT_EXTENDED_LIMIT_INFORMATION
