@@ -5,7 +5,6 @@ using RoyalApps.Community.ExternalApps.WinForms.WindowManagement;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Threading;
@@ -118,9 +117,10 @@ public class ExternalAppHost : UserControl
         {
             if (!_externalApp.Configuration.AsChild)
             {
-                ExternalApps.EmbedWindow(_ownerHandle, _externalApp.WindowHandle, _externalApp.Process);
+                _externalApp.WindowHandle = ExternalApps.EmbedWindow(_ownerHandle, _externalApp.WindowHandle, _externalApp.Process);
                 IsEmbedded = true;
             }
+
             SetWindowPosition();
             FocusApplication(false);
         });
@@ -392,7 +392,7 @@ public class ExternalAppHost : UserControl
             Logger.WithCallerInfo(log => log.LogDebug("Embedding window for '{Executable}'", configuration.Executable));
             if (!_externalApp.Configuration.StartExternal)
                 await EmbedApplicationAsync(cancellationToken);
-            
+
             Invoke(StartedSuccessful);
         }
         catch (Exception ex)
@@ -444,19 +444,20 @@ public class ExternalAppHost : UserControl
         RaiseApplicationStarted();
     }
 
-    private async Task<bool> SetParentAsync(HWND parentWindowHandle, HWND childWindowHandle, CancellationToken cancellationToken)
+    private async Task<bool> SetParentAsync(HWND parentWindowHandle, HWND childWindowHandle,
+        CancellationToken cancellationToken)
     {
         var retry = 0;
         bool success;
-        
+
         // remember the original window style (currently not in use because application of old style doesn't always work)
         _originalGwlStyle = (WINDOW_STYLE) PInvoke.GetWindowLong(
-            childWindowHandle, 
+            childWindowHandle,
             WINDOW_LONG_PTR_INDEX.GWL_STYLE);
 
         // setting these styles don't work because keyboard input is broken afterwards
         var newStyle = _originalGwlStyle & ~(WINDOW_STYLE.WS_GROUP | WINDOW_STYLE.WS_TABSTOP) | WINDOW_STYLE.WS_CHILD;
-        
+
         PInvoke.SetWindowLong(childWindowHandle, WINDOW_LONG_PTR_INDEX.GWL_STYLE, (int) newStyle);
 
         // this needs to run asynchronously to not block the UI thread
@@ -489,7 +490,7 @@ public class ExternalAppHost : UserControl
         if (success)
         {
             _embeddedGwlStyle = (WINDOW_STYLE) PInvoke.GetWindowLong(
-                childWindowHandle, 
+                childWindowHandle,
                 WINDOW_LONG_PTR_INDEX.GWL_STYLE);
         }
 

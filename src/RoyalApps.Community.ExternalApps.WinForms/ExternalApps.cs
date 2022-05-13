@@ -30,14 +30,16 @@ public static class ExternalApps
         ProcessJobTracker.Dispose();
     }
 
-    internal static void EmbedWindow(HWND parentWindowHandle, HWND childWindowHandle, Process? process)
+    internal static HWND EmbedWindow(HWND parentWindowHandle, HWND childWindowHandle, Process? process)
     {
         if (!PInvoke.GetWindowRect(parentWindowHandle, out var parentRect))
             throw new Win32Exception();
             
-        ExternalAppsNative.CreateShlWnd(parentWindowHandle, childWindowHandle, parentRect.right - parentRect.left, parentRect.bottom - parentRect.top);
+        var containerHandle = ExternalAppsNative.CreateShlWnd(parentWindowHandle, childWindowHandle, parentRect.right - parentRect.left, parentRect.bottom - parentRect.top);
 
         if (process != null) 
             ProcessJobTracker.AddProcess(process);
+
+        return new HWND(containerHandle);
     }
 }

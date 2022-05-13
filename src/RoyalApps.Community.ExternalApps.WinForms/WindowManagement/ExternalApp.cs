@@ -61,7 +61,7 @@ internal sealed class ExternalApp : IDisposable
     /// <summary>
     /// Gets the external application's window handle.
     /// </summary>
-    public HWND WindowHandle { get; private set; }
+    public HWND WindowHandle { get; set; }
 
     /// <summary>
     /// Closes the external application.

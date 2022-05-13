@@ -105,6 +105,7 @@ public partial class FormMain : Form
         Program.ConsoleOutput.GetStringBuilder().Clear();
 
         externalAppConfiguration.AsChild = StripMenuItemAsChild.Checked;
+        externalAppConfiguration.StartHidden = false;
         
         var fileInfo = new FileInfo(externalAppConfiguration.Executable!);
         var caption = fileInfo.Name;

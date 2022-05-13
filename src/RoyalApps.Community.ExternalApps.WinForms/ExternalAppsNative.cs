@@ -12,5 +12,5 @@ internal class ExternalAppsNative
     public static extern void DoneShl();
 
     [DllImport(@"lib\swe.dll", SetLastError = true)]
-    public static extern void CreateShlWnd(IntPtr parentHandle, IntPtr childHandle, int width, int height);
+    public static extern IntPtr CreateShlWnd(IntPtr parentHandle, IntPtr childHandle, int width, int height);
 }
