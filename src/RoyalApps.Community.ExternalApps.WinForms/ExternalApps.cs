@@ -12,7 +12,7 @@ namespace RoyalApps.Community.ExternalApps.WinForms;
 public static class ExternalApps
 {
     private static readonly ProcessJobTracker ProcessJobTracker = new("ExternalApps");
-
+    
     /// <summary>
     /// Must be called when the application host starts. 
     /// </summary>

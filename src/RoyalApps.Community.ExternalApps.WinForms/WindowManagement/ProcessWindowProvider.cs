@@ -1,6 +1,4 @@
-﻿namespace RoyalApps.Community.ExternalApps.WinForms.WindowManagement;
-
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -8,6 +6,8 @@ using System.Diagnostics;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.System.StationsAndDesktops;
+
+namespace RoyalApps.Community.ExternalApps.WinForms.WindowManagement;
 
 internal sealed class ProcessWindowProvider
 {
@@ -25,13 +25,13 @@ internal sealed class ProcessWindowProvider
         {
             var capLength = PInvoke.GetWindowTextLength(hWnd);
             var lpString = default(PWSTR);
-            var nLength = PInvoke.GetWindowText(hWnd, lpString, capLength);
+            var _ = PInvoke.GetWindowText(hWnd, lpString, capLength);
             var strTitle = lpString.AsSpan().ToString();
 
             if (!PInvoke.IsWindowVisible(hWnd) || string.IsNullOrEmpty(strTitle))
                 return true;
 
-            var pid = 0;
+            int pid;
             unsafe
             {
                 uint* pidPtr = null;

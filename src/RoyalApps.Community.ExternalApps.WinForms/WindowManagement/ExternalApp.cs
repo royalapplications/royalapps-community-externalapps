@@ -1,25 +1,31 @@
-using RoyalApps.Community.ExternalApps.WinForms.Extensions;
-
-namespace RoyalApps.Community.ExternalApps.WinForms.WindowManagement;
-
 using System;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Management;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
 using Windows.Win32;
 using Windows.Win32.Foundation;
+using Windows.Win32.UI.WindowsAndMessaging;
+using Microsoft.Extensions.Logging;
+using RoyalApps.Community.ExternalApps.WinForms.Extensions;
+
+namespace RoyalApps.Community.ExternalApps.WinForms.WindowManagement;
 
 /// <summary>
 /// Encapsulates an external process.
 /// </summary>
 internal sealed class ExternalApp : IDisposable
 {
+    private HWND _innerHandle;
+
+    private WINDOW_STYLE _embeddedGwlStyle;
+    private WINDOW_STYLE _originalGwlStyle;
+
     private readonly ILogger<ExternalApp> _logger;
     private readonly ILoggerFactory _loggerFactory;
-    
+
     public ExternalApp(ExternalAppConfiguration configuration, ILoggerFactory loggerFactory)
     {
         Configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
@@ -51,7 +57,12 @@ internal sealed class ExternalApp : IDisposable
     /// <summary>
     /// Gets a value indicating whether the external application's process is running.
     /// </summary>
-    public bool IsRunning => Process is { HasExited: false };
+    public bool IsRunning => Process is {HasExited: false};
+
+    /// <summary>
+    /// Gets or sets a value indicating whether the external application is embedded or not. 
+    /// </summary>
+    public bool IsEmbedded { get; private set; }
 
     /// <summary>
     /// Gets the external application's process. 
@@ -61,7 +72,7 @@ internal sealed class ExternalApp : IDisposable
     /// <summary>
     /// Gets the external application's window handle.
     /// </summary>
-    public HWND WindowHandle { get; set; }
+    public HWND WindowHandle { get; private set; }
 
     /// <summary>
     /// Closes the external application.
@@ -150,15 +161,15 @@ internal sealed class ExternalApp : IDisposable
             if (!Configuration.UseExistingProcess)
             {
                 process = await StartProcessAsync(Configuration, cancellationToken);
-            } 
-             
+            }
+
             if (!string.IsNullOrWhiteSpace(Configuration.ProcessNameToTrack) ||
                 !string.IsNullOrWhiteSpace(Configuration.CommandLineMatchString))
             {
                 process = await FindProcessAsync(
-                    Configuration.ProcessNameToTrack, 
-                    Configuration.CommandLineMatchString, 
-                    Configuration.MinWaitTime, 
+                    Configuration.ProcessNameToTrack,
+                    Configuration.CommandLineMatchString,
+                    Configuration.MinWaitTime,
                     Configuration.MaxWaitTime,
                     cancellationToken);
             }
@@ -166,14 +177,15 @@ internal sealed class ExternalApp : IDisposable
             if (!string.IsNullOrEmpty(Configuration.WindowTitleMatch))
             {
                 await Task.Delay(Configuration.MinWaitTime * 1000, cancellationToken);
-                var window = await FindWindowHandleAsync(Process, Configuration.WindowTitleMatch, Configuration.WindowTitleMatchSkip, Configuration.MaxWaitTime, cancellationToken);
-                
+                var window = await FindWindowHandleAsync(Process, Configuration.WindowTitleMatch,
+                    Configuration.WindowTitleMatchSkip, Configuration.MaxWaitTime, cancellationToken);
+
                 if (window == null)
                 {
                     // TODO: raise window picker event
                     throw new NotImplementedException();
                 }
-                
+
                 process = Process.GetProcessById(window.ProcessId);
             }
 
@@ -195,14 +207,14 @@ internal sealed class ExternalApp : IDisposable
             ApplicationState = ApplicationState.Stopped;
         }
     }
-    
+
     private static async Task<Process?> StartProcessAsync(ExternalAppConfiguration configuration, CancellationToken cancellationToken)
     {
         // Prepare Process for Execution and Start
         var process = StartProcess(configuration);
         if (process == null)
             throw new InvalidOperationException($"Failed to start process \"{configuration.Executable}\"");
-        
+
         try
         {
             process.WaitForInputIdle();
@@ -214,9 +226,10 @@ internal sealed class ExternalApp : IDisposable
 
         if (process.HasExited)
         {
-            throw new InvalidOperationException("The process is not running anymore or does not have a main window handle.");
+            throw new InvalidOperationException(
+                "The process is not running anymore or does not have a main window handle.");
         }
-        
+
 
         // Wait for the App to be started, try to get the main window handle
         // depending on the configuration, we don't always need the main window handle of the process we started
@@ -246,19 +259,20 @@ internal sealed class ExternalApp : IDisposable
             {
                 lastException = ex;
             }
-            
-            tryCount++;
 
+            tryCount++;
         } while (!process.HasExited && (mainWindowHandle == IntPtr.Zero || mainWindowTitle == "Default IME"));
 
         if (process.HasExited)
         {
-            throw new InvalidOperationException("The process is not running anymore or does not have a main window handle.");
+            throw new InvalidOperationException(
+                "The process is not running anymore or does not have a main window handle.");
         }
 
         if (lastException != null)
         {
-            throw new InvalidOperationException($"Failed to start process after {tryCount} retries. See inner exception.", lastException);
+            throw new InvalidOperationException(
+                $"Failed to start process after {tryCount} retries. See inner exception.", lastException);
         }
 
         return process;
@@ -298,7 +312,7 @@ internal sealed class ExternalApp : IDisposable
         }
 
         var process = Process.Start(processStartInfo);
-        
+
         return process;
     }
 
@@ -357,14 +371,8 @@ internal sealed class ExternalApp : IDisposable
                     !commandLine.ToLower().Contains(commandLineMatch!.ToLower()))
                     continue;
 
-                // if (Process != null)
-                //     Process.Exited -= AppProcess_Exited;
-                //
-                // Process = Process.GetProcessById(processId);
-                // WindowHandle = new HWND(Process.MainWindowHandle);
-                
                 _logger.LogDebug("{Method} succeeded - Details: {Details}", nameof(FindProcessAsync), debugInfo);
-                
+
                 return Process.GetProcessById(processId);
             }
 
@@ -380,11 +388,12 @@ internal sealed class ExternalApp : IDisposable
         return null;
     }
 
-    private async Task<ProcessWindowInfo?> FindWindowHandleAsync(Process? process, string titleMatch, int titleMatchSkip, int maxWaitTime, CancellationToken cancellationToken)
+    private async Task<ProcessWindowInfo?> FindWindowHandleAsync(Process? process, string titleMatch,
+        int titleMatchSkip, int maxWaitTime, CancellationToken cancellationToken)
     {
         var tryCountMatch = 0;
         var titleMatches = 0;
-        
+
         var currentWindowHandle = process != null ? new HWND(process.MainWindowHandle) : default;
 
         do
@@ -417,7 +426,6 @@ internal sealed class ExternalApp : IDisposable
 
                 // remember the current window handle
                 return window;
-                
             }
 
             tryCountMatch++;
@@ -432,12 +440,148 @@ internal sealed class ExternalApp : IDisposable
         {
             if (sender is Process process)
                 process.Exited -= AppProcess_Exited;
-            
+
             ProcessExited?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "ApplicationClosed event threw an exception");
+        }
+    }
+
+    public async Task EmbedAsync(ExternalAppHost ownerControl, CancellationToken cancellationToken)
+    {
+        switch (Configuration.EmbedMethod)
+        {
+            case EmbedMethod.Control:
+                await SetParentAsync(ownerControl.ControlHandle, WindowHandle, cancellationToken);
+                IsEmbedded = true;
+                break;
+            case EmbedMethod.Window:
+                _innerHandle = WindowHandle;
+                ownerControl.Invoke(() =>
+                {
+                    WindowHandle = ExternalApps.EmbedWindow(ownerControl.ControlHandle, WindowHandle, Process);
+                });
+                IsEmbedded = true;
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Frees the external application window.
+    /// </summary>
+    public void FreeApplication(ExternalAppHost externalAppHost)
+    {
+        if (!HasWindow)
+            return;
+
+        PInvoke.SetParent(WindowHandle, new HWND(IntPtr.Zero));
+        PInvoke.SetWindowLong(WindowHandle, WINDOW_LONG_PTR_INDEX.GWL_STYLE, (int) _originalGwlStyle);
+
+        IsEmbedded = false;
+    }
+
+    /// <summary>
+    /// Focus the external application window
+    /// </summary>
+    public void FocusApplication()
+    {
+        switch (Configuration.EmbedMethod)
+        {
+            case EmbedMethod.Control:
+                PInvoke.SetForegroundWindow(WindowHandle);
+                PInvoke.SetFocus(WindowHandle);
+                break;
+            case EmbedMethod.Window:
+                // SendMessage(...)
+                PInvoke.BringWindowToTop(_innerHandle);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Sets the external application's window position.
+    /// </summary>
+    /// <param name="x">The window's left value.</param>
+    /// <param name="y">The window's top value.</param>
+    /// <param name="width">The window's width.</param>
+    /// <param name="height">The window's height.</param>
+    public void SetWindowPosition(int x, int y, int width, int height)
+    {
+        if (!HasWindow)
+            return;
+
+        // the coordinates of the client area rectangle
+        var rect = new RECT
+        {
+            left = x,
+            top = y,
+            right = x + width,
+            bottom = y + height,
+        };
+
+        // let windows calculate the best position for the window when we want to have the client rect at those coordinates
+        PInvoke.AdjustWindowRectEx(ref rect, _embeddedGwlStyle, false, WINDOW_EX_STYLE.WS_EX_LEFT);
+
+        // let's move the window
+        PInvoke.MoveWindow(
+            WindowHandle,
+            rect.left,
+            rect.top,
+            rect.right - rect.left,
+            rect.bottom - rect.top,
+            true);
+    }
+
+    private async Task SetParentAsync(HWND parentWindowHandle, HWND childWindowHandle,
+        CancellationToken cancellationToken)
+    {
+        var retry = 0;
+        bool success;
+
+        // remember the original window style (currently not in use because application of old style doesn't always work)
+        _originalGwlStyle = (WINDOW_STYLE) PInvoke.GetWindowLong(
+            childWindowHandle,
+            WINDOW_LONG_PTR_INDEX.GWL_STYLE);
+
+        // setting these styles don't work because keyboard input is broken afterwards
+        var newStyle = _originalGwlStyle & ~(WINDOW_STYLE.WS_GROUP | WINDOW_STYLE.WS_TABSTOP) | WINDOW_STYLE.WS_CHILD;
+
+        PInvoke.SetWindowLong(childWindowHandle, WINDOW_LONG_PTR_INDEX.GWL_STYLE, (int) newStyle);
+
+        // this needs to run asynchronously to not block the UI thread
+        do
+        {
+            try
+            {
+                PInvoke.SetParent(childWindowHandle, parentWindowHandle);
+                var lastWin32Exception = new Win32Exception();
+                success = lastWin32Exception.NativeErrorCode == 0;
+
+                _logger.LogDebug(success ? null : lastWin32Exception,
+                    "SetParentAsync success: {Success}, Error Code: {NativeErrorCode}",
+                    success, lastWin32Exception.NativeErrorCode);
+            }
+            catch (Exception ex)
+            {
+                success = false;
+                _logger.LogDebug(ex, "SetParentInternal failed");
+            }
+
+            if (success || retry > 10)
+                break;
+
+            retry++;
+
+            await Task.Delay(100, cancellationToken);
+        } while (true);
+
+        if (success)
+        {
+            _embeddedGwlStyle = (WINDOW_STYLE) PInvoke.GetWindowLong(
+                childWindowHandle,
+                WINDOW_LONG_PTR_INDEX.GWL_STYLE);
         }
     }
 }

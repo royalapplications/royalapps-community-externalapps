@@ -1,4 +1,4 @@
-namespace RoyalApps.Community.ExternalApps.WinForms;
+namespace RoyalApps.Community.ExternalApps.WinForms.WindowManagement;
 
 /// <summary>
 /// Represents the configuration of an external application.
@@ -106,7 +106,7 @@ public class ExternalAppConfiguration
     public bool KillOnClose { get; set; }
 
     /// <summary>
-    /// 
+    /// Gets or sets the embed method of the external application window.
     /// </summary>
-    public bool AsChild { get; set; }
+    public EmbedMethod EmbedMethod { get; set; }
 }

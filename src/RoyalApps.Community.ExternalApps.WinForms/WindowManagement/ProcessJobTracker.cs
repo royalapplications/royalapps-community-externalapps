@@ -1,5 +1,4 @@
 ﻿// ReSharper disable CommentTypo
-namespace RoyalApps.Community.ExternalApps.WinForms.WindowManagement;
 
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license.
@@ -12,6 +11,8 @@ using System.Diagnostics;
 using Microsoft.Win32.SafeHandles;
 using Windows.Win32.System.JobObjects;
 using static Windows.Win32.PInvoke;
+
+namespace RoyalApps.Community.ExternalApps.WinForms.WindowManagement;
 
 #pragma warning disable SA1629 // xml doc comments must end with periods (we end with a hyperlink).
 

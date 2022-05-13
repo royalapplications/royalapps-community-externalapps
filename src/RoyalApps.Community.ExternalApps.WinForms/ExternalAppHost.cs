@@ -4,7 +4,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using RoyalApps.Community.ExternalApps.WinForms.WindowManagement;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Threading;
@@ -16,6 +15,7 @@ using Windows.Win32.Graphics.Gdi;
 using Windows.Win32.Storage.Xps;
 using Windows.Win32.UI.Accessibility;
 using Windows.Win32.UI.WindowsAndMessaging;
+// ReSharper disable CommentTypo
 
 namespace RoyalApps.Community.ExternalApps.WinForms;
 
@@ -29,17 +29,15 @@ public class ExternalAppHost : UserControl
     // ReSharper disable once CollectionNeverQueried.Local
     private readonly List<WINEVENTPROC> _winEventProcedures = new();
 
-    private WINDOW_STYLE _embeddedGwlStyle;
-    private WINDOW_STYLE _originalGwlStyle;
-    private HWND _ownerHandle;
+    private bool IsLeftMouseButtonDown => MouseButtons.HasFlag(MouseButtons.Left);
+
+    /// <summary>
+    /// The Handle property as HWND.
+    /// </summary>
+    public HWND ControlHandle { get; private set; }
 
     private ExternalApp? _externalApp;
     private ILogger? _logger;
-
-    /// <summary>
-    /// Gets or sets a value indicating whether the external application is embedded or not. 
-    /// </summary>
-    public bool IsEmbedded { get; set; }
 
     /// <summary>
     /// Gets or sets the <see cref="ILoggerFactory" /> used to create instances of <see cref="ILogger" />.
@@ -108,19 +106,10 @@ public class ExternalAppHost : UserControl
             return;
         }
 
-        if (_externalApp.Configuration.AsChild)
-        {
-            IsEmbedded = await SetParentAsync(_ownerHandle, _externalApp.WindowHandle, cancellationToken);
-        }
+        await _externalApp.EmbedAsync(this, cancellationToken);
 
         Invoke(() =>
         {
-            if (!_externalApp.Configuration.AsChild)
-            {
-                _externalApp.WindowHandle = ExternalApps.EmbedWindow(_ownerHandle, _externalApp.WindowHandle, _externalApp.Process);
-                IsEmbedded = true;
-            }
-
             SetWindowPosition();
             FocusApplication(false);
         });
@@ -140,7 +129,7 @@ public class ExternalAppHost : UserControl
     protected override void OnHandleCreated(EventArgs e)
     {
         base.OnHandleCreated(e);
-        _ownerHandle = new HWND(Handle);
+        ControlHandle = new HWND(Handle);
     }
 
     /// <inheritdoc />
@@ -161,22 +150,6 @@ public class ExternalAppHost : UserControl
         }
 
         base.Dispose(disposing);
-    }
-
-    /// <summary>
-    /// Frees the external application window.
-    /// </summary>
-    public void FreeApplication()
-    {
-        if (_externalApp is null or {HasWindow: false})
-            return;
-
-        var handle = _externalApp.WindowHandle;
-
-        PInvoke.SetParent(handle, new HWND(IntPtr.Zero));
-        PInvoke.SetWindowLong(handle, WINDOW_LONG_PTR_INDEX.GWL_STYLE, (int) _originalGwlStyle);
-
-        IsEmbedded = false;
     }
 
     /// <summary>
@@ -232,41 +205,7 @@ public class ExternalAppHost : UserControl
     /// <param name="rectangle">A <see cref="Rectangle"/> describing the desired position.</param>
     public void SetWindowPosition(Rectangle rectangle)
     {
-        SetWindowPosition(rectangle.X, rectangle.Y, rectangle.Width, rectangle.Height);
-    }
-
-    /// <summary>
-    /// Sets the external application's window position.
-    /// </summary>
-    /// <param name="x">The window's left value.</param>
-    /// <param name="y">The window's top value.</param>
-    /// <param name="width">The window's width.</param>
-    /// <param name="height">The window's height.</param>
-    public void SetWindowPosition(int x, int y, int width, int height)
-    {
-        if (_externalApp is null or {HasWindow: false})
-            return;
-
-        // the coordinates of the client area rectangle
-        var rect = new RECT
-        {
-            left = x,
-            top = y,
-            right = x + width,
-            bottom = y + height,
-        };
-
-        // let windows calculate the best position for the window when we want to have the client rect at those coordinates
-        PInvoke.AdjustWindowRectEx(ref rect, _embeddedGwlStyle, false, WINDOW_EX_STYLE.WS_EX_LEFT);
-
-        // let's move the window
-        PInvoke.MoveWindow(
-            _externalApp.WindowHandle,
-            rect.left,
-            rect.top,
-            rect.right - rect.left,
-            rect.bottom - rect.top,
-            true);
+        _externalApp?.SetWindowPosition(rectangle.X, rectangle.Y, rectangle.Width, rectangle.Height);
     }
 
     /// <summary>
@@ -296,13 +235,15 @@ public class ExternalAppHost : UserControl
         if (_externalApp is null or {HasWindow: false})
             return;
 
-        if (!IsEmbedded && !force)
+        if (!_externalApp.IsEmbedded && !force)
             return;
 
         Invoke(Focus);
 
-        PInvoke.SetForegroundWindow(_externalApp.WindowHandle);
-        PInvoke.SetFocus(_externalApp.WindowHandle);
+        _externalApp.FocusApplication();
+
+        // Force invalidate/repaint somehow?
+        // Calling SetWindowPosition() doesn't work as one might think...
     }
 
     /// <inheritdoc />
@@ -329,6 +270,12 @@ public class ExternalAppHost : UserControl
             case PInvoke.WM_MDIACTIVATE:
             case PInvoke.WM_SETFOCUS:
             {
+                if (IsLeftMouseButtonDown)
+                {
+                    base.WndProc(ref m);
+                    return;
+                }
+
                 // notify host application that the external app area has been clicked
                 RaiseApplicationActivated();
 
@@ -412,9 +359,9 @@ public class ExternalAppHost : UserControl
 
         try
         {
-            if (_externalApp is not null && IsEmbedded)
+            if (_externalApp is not null && _externalApp.IsEmbedded)
             {
-                SetWindowPosition(0, 0, Width, Height);
+                _externalApp.SetWindowPosition(0, 0, Width, Height);
             }
             else
             {
@@ -442,59 +389,6 @@ public class ExternalAppHost : UserControl
         SetupHooks();
         SetWindowPosition();
         RaiseApplicationStarted();
-    }
-
-    private async Task<bool> SetParentAsync(HWND parentWindowHandle, HWND childWindowHandle,
-        CancellationToken cancellationToken)
-    {
-        var retry = 0;
-        bool success;
-
-        // remember the original window style (currently not in use because application of old style doesn't always work)
-        _originalGwlStyle = (WINDOW_STYLE) PInvoke.GetWindowLong(
-            childWindowHandle,
-            WINDOW_LONG_PTR_INDEX.GWL_STYLE);
-
-        // setting these styles don't work because keyboard input is broken afterwards
-        var newStyle = _originalGwlStyle & ~(WINDOW_STYLE.WS_GROUP | WINDOW_STYLE.WS_TABSTOP) | WINDOW_STYLE.WS_CHILD;
-
-        PInvoke.SetWindowLong(childWindowHandle, WINDOW_LONG_PTR_INDEX.GWL_STYLE, (int) newStyle);
-
-        // this needs to run asynchronously to not block the UI thread
-        do
-        {
-            try
-            {
-                PInvoke.SetParent(childWindowHandle, parentWindowHandle);
-                var lastWin32Exception = new Win32Exception();
-                success = lastWin32Exception.NativeErrorCode == 0;
-
-                Logger.LogDebug(success ? null : lastWin32Exception,
-                    "SetParentAsync success: {Success}, Error Code: {NativeErrorCode}",
-                    success, lastWin32Exception.NativeErrorCode);
-            }
-            catch (Exception ex)
-            {
-                success = false;
-                Logger.LogDebug(ex, "SetParentInternal failed");
-            }
-
-            if (success || retry > 10)
-                break;
-
-            retry++;
-
-            await Task.Delay(100, cancellationToken);
-        } while (true);
-
-        if (success)
-        {
-            _embeddedGwlStyle = (WINDOW_STYLE) PInvoke.GetWindowLong(
-                childWindowHandle,
-                WINDOW_LONG_PTR_INDEX.GWL_STYLE);
-        }
-
-        return success;
     }
 
     private void SetupHooks()
@@ -525,18 +419,18 @@ public class ExternalAppHost : UserControl
     private void WinEventProc(HWINEVENTHOOK hWinEventHook, uint eventType, HWND hWnd, int idObject, int idChild,
         uint dwEventThread, uint dwmsEventTime)
     {
-        Logger.WithCallerInfo(logger => logger.LogDebug(
-            "WinEventProc: EventType: {EventType}, Window Handle: {WindowHandle}, idObject: {IdObject}, idChild: {IdChild}",
-            eventType, hWnd, idObject, idChild));
+        // Logger.WithCallerInfo(logger => logger.LogDebug(
+        //     "WinEventProc: EventType: {EventType}, Window Handle: {WindowHandle}, idObject: {IdObject}, idChild: {IdChild}",
+        //     eventType, hWnd, idObject, idChild));
 
         if (_externalApp == null)
             return;
 
         if (_externalApp.WindowHandle != hWnd)
         {
-            Logger.WithCallerInfo(logger => logger.LogDebug(
-                "WinEventProc: exiting because WindowHandle ({AppWindowHandle}) != hWnd ({WindowHandle})",
-                _externalApp.WindowHandle, hWnd));
+            // Logger.WithCallerInfo(logger => logger.LogDebug(
+            //     "WinEventProc: exiting because WindowHandle ({AppWindowHandle}) != hWnd ({WindowHandle})",
+            //     _externalApp.WindowHandle, hWnd));
             return;
         }
 
