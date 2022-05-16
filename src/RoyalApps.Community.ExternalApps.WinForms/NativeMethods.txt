@@ -2,8 +2,9 @@ AdjustWindowRectEx
 AssignProcessToJobObject
 BringWindowToTop
 CreateJobObject
+DestroyWindow
 EnumDesktopWindows
-GetMessage
+GetClientRect
 GetWindowLong
 GetWindowRect
 GetWindowText
@@ -11,7 +12,6 @@ GetWindowTextLength
 GetWindowThreadProcessId
 IsWindowVisible
 MoveWindow
-PostMessage
 PrintWindow
 SendMessage
 SetFocus
@@ -23,9 +23,11 @@ SetWinEventHook
 ShowWindow
 UnhookWinEvent
 
-WM_MOUSEACTIVATE
 WM_LBUTTONDOWN
 WM_MDIACTIVATE
+WM_MOUSEACTIVATE
+WM_NCDESTROY
+WM_PARENTNOTIFY
 WM_SETFOCUS
 
 EVENT_OBJECT_NAMECHANGE

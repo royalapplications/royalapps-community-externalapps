@@ -456,6 +456,7 @@ internal sealed class ExternalApp : IDisposable
             case EmbedMethod.Control:
                 await SetParentAsync(ownerControl.ControlHandle, WindowHandle, cancellationToken);
                 IsEmbedded = true;
+                ownerControl.SetWindowPosition();
                 break;
             case EmbedMethod.Window:
                 _innerHandle = WindowHandle;
@@ -469,17 +470,25 @@ internal sealed class ExternalApp : IDisposable
     }
 
     /// <summary>
-    /// Frees the external application window.
+    /// Detaches the external application window.
     /// </summary>
-    public void FreeApplication(ExternalAppHost externalAppHost)
+    public void DetachApplication()
     {
         if (!HasWindow)
             return;
 
-        PInvoke.SetParent(WindowHandle, new HWND(IntPtr.Zero));
-        PInvoke.SetWindowLong(WindowHandle, WINDOW_LONG_PTR_INDEX.GWL_STYLE, (int) _originalGwlStyle);
-
-        IsEmbedded = false;
+        switch (Configuration.EmbedMethod)
+        {
+            case EmbedMethod.Control:
+                PInvoke.SetParent(WindowHandle, new HWND(IntPtr.Zero));
+                PInvoke.SetWindowLong(WindowHandle, WINDOW_LONG_PTR_INDEX.GWL_STYLE, (int)_originalGwlStyle);
+                IsEmbedded = false;
+                break;
+            case EmbedMethod.Window:
+                WindowHandle = ExternalApps.DetachWindow(WindowHandle);
+                IsEmbedded = false;
+                break;
+        }
     }
 
     /// <summary>
@@ -534,8 +543,7 @@ internal sealed class ExternalApp : IDisposable
             true);
     }
 
-    private async Task SetParentAsync(HWND parentWindowHandle, HWND childWindowHandle,
-        CancellationToken cancellationToken)
+    private async Task SetParentAsync(HWND parentWindowHandle, HWND childWindowHandle, CancellationToken cancellationToken)
     {
         var retry = 0;
         bool success;

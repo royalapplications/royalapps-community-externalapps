@@ -32,14 +32,27 @@ public static class ExternalApps
 
     internal static HWND EmbedWindow(HWND parentWindowHandle, HWND childWindowHandle, Process? process)
     {
-        if (!PInvoke.GetWindowRect(parentWindowHandle, out var parentRect))
+        if (!PInvoke.GetClientRect(parentWindowHandle, out var parentWindowClientRect))
             throw new Win32Exception();
             
-        var containerHandle = ExternalAppsNative.CreateShlWnd(parentWindowHandle, childWindowHandle, parentRect.right - parentRect.left, parentRect.bottom - parentRect.top);
+        var containerHandle = ExternalAppsNative.CreateShlWnd(
+            parentWindowHandle, 
+            childWindowHandle, 
+            parentWindowClientRect.right - parentWindowClientRect.left, 
+            parentWindowClientRect.bottom - parentWindowClientRect.top);
 
         if (process != null) 
             ProcessJobTracker.AddProcess(process);
 
         return new HWND(containerHandle);
     }
+
+    internal static HWND DetachWindow(HWND windowHandle)
+    {
+        var newWindowHandle = PInvoke.SendMessage(windowHandle, PInvoke.WM_PARENTNOTIFY, new WPARAM(PInvoke.WM_NCDESTROY), 0);
+        PInvoke.DestroyWindow(windowHandle);
+        return new HWND(newWindowHandle);
+
+    }
+    
 }

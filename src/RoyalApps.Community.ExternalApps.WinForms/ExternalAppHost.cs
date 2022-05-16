@@ -58,6 +58,16 @@ public class ExternalAppHost : UserControl
     }
 
     /// <summary>
+    /// The configuration of the external application to embed.
+    /// </summary>
+    public ExternalAppConfiguration? Configuration => _externalApp?.Configuration;
+
+    /// <summary>
+    /// True if an external application window is currently embedded.
+    /// </summary>
+    public bool IsEmbedded => _externalApp?.IsEmbedded ?? false;
+
+    /// <summary>
     /// Fired after the application has been activated.
     /// </summary>
     public event EventHandler<EventArgs>? ApplicationActivated;
@@ -86,12 +96,24 @@ public class ExternalAppHost : UserControl
     }
 
     /// <summary>
+    /// Detaches the application.
+    /// </summary>
+    public void DetachApplication()
+    {
+        _externalApp?.DetachApplication();
+        SetWindowPosition();
+    }
+
+    /// <summary>
     /// Embeds the application.
     /// </summary>
     public void EmbedApplication()
     {
+        if (_externalApp is null)
+            return;
+
         var taskFactory = new TaskFactory();
-        taskFactory.StartNew(() => EmbedApplicationAsync(), TaskCreationOptions.LongRunning);
+        taskFactory.StartNew(() => _externalApp.EmbedAsync(this, CancellationToken.None), TaskCreationOptions.LongRunning);
     }
 
     /// <summary>
@@ -352,7 +374,7 @@ public class ExternalAppHost : UserControl
     /// <summary>
     /// Sets the external application's window position to the default values.
     /// </summary>
-    private void SetWindowPosition()
+    internal void SetWindowPosition()
     {
         if (Disposing || IsDisposed)
             return;
