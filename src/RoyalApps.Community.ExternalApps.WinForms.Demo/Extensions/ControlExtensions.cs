@@ -3,8 +3,26 @@ using System.Windows.Forms;
 
 namespace RoyalApps.Community.ExternalApps.WinForms.Demo.Extensions;
 
-public static class TabControlExtensions
+public static class ControlExtensions
 {
+    /// <summary>
+    /// Finds the currently focused control.
+    /// </summary>
+    /// <param name="control">The form or control you want to find the active/focused control in.</param>
+    /// <returns>The focused control.</returns>
+    public static Control FindFocusedControl(this Control control)
+    {
+        var container = control as ContainerControl;
+        while (container != null)
+        {
+            if (container.ActiveControl == null)
+                break;
+            control = container.ActiveControl;
+            container = control as ContainerControl;
+        }
+        return control;
+    }
+    
     /// <summary>
     /// Determine which tab index is at specified location
     /// </summary>
