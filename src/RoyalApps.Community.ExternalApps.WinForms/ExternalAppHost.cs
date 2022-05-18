@@ -16,6 +16,7 @@ using Windows.Win32.Storage.Xps;
 using Windows.Win32.UI.Accessibility;
 using Windows.Win32.UI.WindowsAndMessaging;
 // ReSharper disable CommentTypo
+// ReSharper disable StringLiteralTypo
 
 namespace RoyalApps.Community.ExternalApps.WinForms;
 
@@ -68,22 +69,27 @@ public class ExternalAppHost : UserControl
     public bool IsEmbedded => _externalApp?.IsEmbedded ?? false;
 
     /// <summary>
-    /// Fired after the application has been activated.
+    /// Raised after the application has been activated.
     /// </summary>
     public event EventHandler<EventArgs>? ApplicationActivated;
 
     /// <summary>
-    /// Fired after the application has been closed.
+    /// Raised after the application has been closed.
     /// </summary>
     public event EventHandler<EventArgs>? ApplicationClosed;
 
     /// <summary>
-    /// Fired after the application has been started.
+    /// Raised after the application has been started.
     /// </summary>
     public event EventHandler<EventArgs>? ApplicationStarted;
 
     /// <summary>
-    /// Fired when the application's window title has changed.
+    /// Raised when no window with the matching criteria has been found.
+    /// </summary>
+    public event EventHandler<QueryWindowEventArgs>? QueryWindow; 
+
+    /// <summary>
+    /// Raised when the application's window title has changed.
     /// </summary>
     public event EventHandler<EventArgs>? WindowTitleChanged;
 
@@ -162,6 +168,7 @@ public class ExternalAppHost : UserControl
             if (_externalApp != null)
             {
                 _externalApp.ProcessExited -= ExternalApp_ProcessExited;
+                _externalApp.QueryWindow -= ExternalApp_QueryWindow;
                 _externalApp.Dispose();
                 _externalApp = null;
             }
@@ -249,6 +256,19 @@ public class ExternalAppHost : UserControl
     }
 
     /// <summary>
+    /// </summary>
+    protected virtual void OnQueryWindow(QueryWindowEventArgs e)
+    {
+    }
+    
+    /// <summary>
+    /// Handles a window title change.
+    /// </summary>
+    protected virtual void OnWindowTitleChanged()
+    {
+    }
+
+    /// <summary>
     /// Handles focusing of the external application. 
     /// </summary>
     /// <param name="force">If true, always bring external application to foreground and focus the window, even if it is not embedded.</param>
@@ -273,13 +293,6 @@ public class ExternalAppHost : UserControl
     {
         base.OnResize(e);
         SetWindowPosition();
-    }
-
-    /// <summary>
-    /// Handles a window title change.
-    /// </summary>
-    protected virtual void OnWindowTitleChanged()
-    {
     }
 
     /// <inheritdoc />
@@ -314,6 +327,11 @@ public class ExternalAppHost : UserControl
     {
         RaiseApplicationClosed();
     }
+    
+    private void ExternalApp_QueryWindow(object? sender, QueryWindowEventArgs e)
+    {
+        RaiseQueryWindow(e);
+    }
 
     private void RaiseApplicationActivated()
     {
@@ -342,6 +360,18 @@ public class ExternalAppHost : UserControl
         ApplicationStarted?.Invoke(this, EventArgs.Empty);
     }
 
+    private void RaiseQueryWindow(QueryWindowEventArgs e)
+    {
+        if (InvokeRequired)
+        {
+            Invoke(RaiseQueryWindow, e);
+            return;
+        }
+        Logger.WithCallerInfo(logger => logger.LogDebug(nameof(RaiseQueryWindow)));
+        OnQueryWindow(e);
+        QueryWindow?.Invoke(this, e);
+    }
+    
     private void RaiseWindowTitleChanged()
     {
         Logger.WithCallerInfo(logger => logger.LogDebug(nameof(RaiseWindowTitleChanged)));
@@ -354,6 +384,7 @@ public class ExternalAppHost : UserControl
         Logger.WithCallerInfo(log => log.LogDebug("Starting executable '{Executable}'", configuration.Executable));
         _externalApp = new ExternalApp(configuration, LoggerFactory);
         _externalApp.ProcessExited += ExternalApp_ProcessExited;
+        _externalApp.QueryWindow += ExternalApp_QueryWindow;
 
         try
         {

@@ -35,9 +35,14 @@ internal sealed class ExternalApp : IDisposable
     }
 
     /// <summary>
-    /// Fired when the external application's process exits. 
+    /// Raised when the external application's process exits. 
     /// </summary>
     public event EventHandler? ProcessExited;
+
+    /// <summary>
+    /// Raised when no window with the matching criteria has been found.
+    /// </summary>
+    public event EventHandler<QueryWindowEventArgs>? QueryWindow; 
 
     /// <summary>
     /// Gets the current state of the external application.
@@ -177,13 +182,21 @@ internal sealed class ExternalApp : IDisposable
             if (!string.IsNullOrEmpty(Configuration.WindowTitleMatch))
             {
                 await Task.Delay(Configuration.MinWaitTime * 1000, cancellationToken);
-                var window = await FindWindowHandleAsync(Process, Configuration.WindowTitleMatch,
-                    Configuration.WindowTitleMatchSkip, Configuration.MaxWaitTime, cancellationToken);
+                var window = await FindWindowHandleAsync(
+                    Process, 
+                    Configuration.WindowTitleMatch,
+                    Configuration.WindowTitleMatchSkip, 
+                    Configuration.MaxWaitTime, 
+                    cancellationToken);
 
                 if (window == null)
                 {
-                    // TODO: raise window picker event
-                    throw new NotImplementedException();
+                    var queryWindowEventArgs = new QueryWindowEventArgs();
+                    QueryWindow?.Invoke(this, queryWindowEventArgs);
+                    if (queryWindowEventArgs.WindowHandle == 0)
+                    {
+                        throw new MissingWindowException();
+                    }
                 }
 
                 process = Process.GetProcessById(window.ProcessId);
