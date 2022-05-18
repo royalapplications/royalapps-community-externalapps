@@ -73,3 +73,9 @@ There are two embed-methods available:
 * **Embed as Window:** The whole window is embedded including the main menu (if available). The limitation of this method is that the ALT-TAB order may be incorrect. 
 
 In the **Application** menu you can detach and re-embed the active external application.
+
+## WinEmbed.dll
+This project includes a dll called WinEmbed.dll (in the /lib folder) which handles most of the Windows native stuff. You can find the C/C++ code in the /src/WinEmbed directory. To build this dll from source, you need Visual Studio 2022 or later and also the [WDK](https://docs.microsoft.com/en-us/windows-hardware/drivers/download-the-wdk) installed.
+
+## Acknowledgements
+Special thanks to [Alex](https://github.com/rbmm) for helping out with all the native code challenges.
