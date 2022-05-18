@@ -21,7 +21,7 @@
 
     <PropertyGroup>
         <TargetFrameworks>net462;net5.0-windows;net6.0-windows</TargetFrameworks>
-        <RuntimeIdentifier>win</RuntimeIdentifier>
+        <RuntimeIdentifier>win-x64</RuntimeIdentifier>
         <UseWindowsForms>true</UseWindowsForms>
         <IncludeSymbols>true</IncludeSymbols>
     </PropertyGroup>
@@ -57,8 +57,8 @@
     </ItemGroup>
 
     <ItemGroup>
-      <None Remove="lib\swe.dll" />
-      <Content Include="lib\swe.dll">
+      <None Remove="lib\WinEmbed.dll" />
+      <Content Include="lib\WinEmbed.dll">
         <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       </Content>
     </ItemGroup>
