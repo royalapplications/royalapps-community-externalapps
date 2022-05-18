@@ -1,0 +1,7 @@
+LIBRARY	"WinEmbed"
+
+EXPORTS
+
+InitShl
+CreateShlWnd
+DoneShl
