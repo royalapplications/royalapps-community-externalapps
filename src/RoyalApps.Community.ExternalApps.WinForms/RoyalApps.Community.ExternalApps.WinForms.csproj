@@ -11,12 +11,12 @@
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <PackageIcon>RoyalApps_1024.png</PackageIcon>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
-        <Version>0.1.0</Version>
+        <Version>0.2.10</Version>
         <Nullable>enable</Nullable>
         <LangVersion>10</LangVersion>
-        <!--        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>-->
+        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
-        <NoWarn>NU1701</NoWarn>
+        <NoWarn>NU1701;NU5100</NoWarn>
     </PropertyGroup>
 
     <PropertyGroup>
@@ -57,10 +57,11 @@
     </ItemGroup>
 
     <ItemGroup>
-      <None Remove="lib\WinEmbed.dll" />
-      <Content Include="lib\WinEmbed.dll">
-        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-      </Content>
+        <None Include="lib\WinEmbed.dll" Pack="true" PackagePath="runtimes\win-x64\native" />
+        <Content Include="lib\WinEmbed.dll">
+            <Link>%(Filename)%(Extension)</Link>
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+        </Content>
     </ItemGroup>
 
 </Project>

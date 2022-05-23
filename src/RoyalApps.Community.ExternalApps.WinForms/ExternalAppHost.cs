@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using RoyalApps.Community.ExternalApps.WinForms.WindowManagement;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Threading;
@@ -23,7 +24,7 @@ namespace RoyalApps.Community.ExternalApps.WinForms;
 /// <summary>
 /// The host control which can embed external application windows.
 /// </summary>
-public class ExternalAppHost : UserControl
+public class ExternalAppHost : Control
 {
     private readonly List<IntPtr> _winEventHooks = new();
 
@@ -35,7 +36,7 @@ public class ExternalAppHost : UserControl
     /// <summary>
     /// The Handle property as HWND.
     /// </summary>
-    public HWND ControlHandle { get; private set; }
+    internal HWND ControlHandle => new(Handle);
 
     private ExternalApp? _externalApp;
     private ILogger? _logger;
@@ -69,6 +70,11 @@ public class ExternalAppHost : UserControl
     public bool IsEmbedded => _externalApp?.IsEmbedded ?? false;
 
     /// <summary>
+    /// Provides access to the actual process object of the embedded window.
+    /// </summary>
+    public Process? Process => _externalApp?.Process;
+    
+    /// <summary>
     /// Raised after the application has been activated.
     /// </summary>
     public event EventHandler<EventArgs>? ApplicationActivated;
@@ -76,7 +82,7 @@ public class ExternalAppHost : UserControl
     /// <summary>
     /// Raised after the application has been closed.
     /// </summary>
-    public event EventHandler<EventArgs>? ApplicationClosed;
+    public event EventHandler<ApplicationClosedEventArgs>? ApplicationClosed;
 
     /// <summary>
     /// Raised after the application has been started.
@@ -93,6 +99,16 @@ public class ExternalAppHost : UserControl
     /// </summary>
     public event EventHandler<EventArgs>? WindowTitleChanged;
 
+    /// <summary>
+    /// Constructor
+    /// </summary>
+    public ExternalAppHost()
+    {
+        SetStyle(ControlStyles.ContainerControl, false);
+        SetStyle(ControlStyles.Selectable, true);
+        TabStop = true;
+    }
+    
     /// <summary>
     /// Closes the external application
     /// </summary>
@@ -130,8 +146,7 @@ public class ExternalAppHost : UserControl
         if (_externalApp is null or {HasWindow: false})
         {
             // process not found or application has been closed
-            RaiseApplicationClosed();
-            return;
+            throw new MissingWindowException();
         }
 
         await _externalApp.EmbedAsync(this, cancellationToken);
@@ -151,13 +166,6 @@ public class ExternalAppHost : UserControl
     {
         var taskFactory = new TaskFactory();
         taskFactory.StartNew(() => StartAsync(configuration), TaskCreationOptions.LongRunning);
-    }
-
-    /// <inheritdoc />
-    protected override void OnHandleCreated(EventArgs e)
-    {
-        base.OnHandleCreated(e);
-        ControlHandle = new HWND(Handle);
     }
 
     /// <inheritdoc />
@@ -282,10 +290,7 @@ public class ExternalAppHost : UserControl
 
         Invoke(Focus);
 
-        _externalApp.FocusApplication();
-
-        // Force invalidate/repaint somehow?
-        // Calling SetWindowPosition() doesn't work as one might think...
+        //_externalApp.FocusApplication();
     }
 
     /// <inheritdoc />
@@ -298,24 +303,29 @@ public class ExternalAppHost : UserControl
     /// <inheritdoc />
     protected override void WndProc(ref Message m)
     {
+        Logger.LogDebug("ExternalAppHost hWnd: {HWnd} Message: 0x{Msg:X} WParam: 0x{WParam:X}, LParam: 0x{LParam:X}", m.HWnd.ToString(), m.Msg, m.WParam, m.LParam);
         switch ((uint) m.Msg)
         {
+            // case PInvoke.WM_PARENTNOTIFY:
+            //     var notifi = (uint)m.WParam == PInvoke.WM_SETFOCUS;
+            //     Logger.LogDebug("WM_PARENTNOTIFI: {Notifi}", notifi);
+            //     break;
+            case PInvoke.WM_SETFOCUS:
             case PInvoke.WM_MOUSEACTIVATE:
             case PInvoke.WM_LBUTTONDOWN:
             case PInvoke.WM_MDIACTIVATE:
-            case PInvoke.WM_SETFOCUS:
             {
-                if (IsLeftMouseButtonDown)
-                {
-                    base.WndProc(ref m);
-                    return;
-                }
+                // if (IsLeftMouseButtonDown)
+                // {
+                //     base.WndProc(ref m);
+                //     return;
+                // }
 
                 // notify host application that the external app area has been clicked
-                RaiseApplicationActivated();
+                // RaiseApplicationActivated();
 
                 // make sure the external application gets the input focus
-                FocusApplication(false);
+                // FocusApplication(false);
                 break;
             }
         }
@@ -325,7 +335,7 @@ public class ExternalAppHost : UserControl
 
     private void ExternalApp_ProcessExited(object? sender, EventArgs e)
     {
-        RaiseApplicationClosed();
+        RaiseApplicationClosed(new ApplicationClosedEventArgs {ProcessExited = true});
     }
     
     private void ExternalApp_QueryWindow(object? sender, QueryWindowEventArgs e)
@@ -340,17 +350,17 @@ public class ExternalAppHost : UserControl
         ApplicationActivated?.Invoke(this, EventArgs.Empty);
     }
 
-    private void RaiseApplicationClosed()
+    private void RaiseApplicationClosed(ApplicationClosedEventArgs applicationClosedEventArgs)
     {
         if (InvokeRequired)
         {
-            Invoke(RaiseApplicationClosed);
+            Invoke(RaiseApplicationClosed, applicationClosedEventArgs);
             return;
         }
 
         Logger.WithCallerInfo(logger => logger.LogDebug(nameof(RaiseApplicationClosed)));
         OnApplicationClosed();
-        ApplicationClosed?.Invoke(this, EventArgs.Empty);
+        ApplicationClosed?.Invoke(this, applicationClosedEventArgs);
     }
 
     private void RaiseApplicationStarted()
@@ -399,6 +409,7 @@ public class ExternalAppHost : UserControl
         {
             Logger.LogWarning(ex, "{Method} failed starting '{Executable}'",
                 nameof(StartAsync), configuration.Executable);
+            RaiseApplicationClosed(new ApplicationClosedEventArgs(ex));
         }
     }
 
