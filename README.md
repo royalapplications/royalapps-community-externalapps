@@ -10,8 +10,8 @@ RoyalApps.Community.ExternalApps contains projects/packages to easily embed/use 
 
 The ExternalAppHost control starts the configured process and embeds the application window into the control.
 
-**Warning:**  
-What this control does is not exactly a Microsoft supported scenario! Please read [Raymond Chen's blog post 'Is it legal to have a cross-process parent/child or owner/owned window relationship?'](https://devblogs.microsoft.com/oldnewthing/20130412-00/?p=4683) for more details. **Spoiler alert:** Yes, it's technically *legal*. It's also technically *legal* to [juggle chainsaws](https://www.youtube.com/watch?v=ti3MkTt5qv4)!
+> **Warning**  
+> What this control does is not exactly a Microsoft supported scenario! Please read [Raymond Chen's blog post 'Is it legal to have a cross-process parent/child or owner/owned window relationship?'](https://devblogs.microsoft.com/oldnewthing/20130412-00/?p=4683) for more details. **Spoiler alert:** Yes, it's technically *legal*. It's also technically *legal* to [juggle chainsaws](https://www.youtube.com/watch?v=ti3MkTt5qv4)!
 
 ## Getting Started
 ### Installation
@@ -44,8 +44,8 @@ ExternalAppHost.CloseApplication();
 ```
 Depending on the application, you may get a confirmation dialog in case there are unsaved changes. You can set the `ExternalAppConfiguration.KillOnClose` property to `true` to forcibly quit the application by killing the process.
 
-**Note:**  
-All processes which are started by the control will be closed/killed when the main application is closed or killed.
+> **Note**  
+> All processes which are started by the control will be closed/killed when the main application is closed or killed.
 
 #### Detach Application Window
 Once the application is started and embedded, you can detach the application window by calling:
