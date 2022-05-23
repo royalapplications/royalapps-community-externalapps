@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.System.StationsAndDesktops;
@@ -23,26 +24,41 @@ internal sealed class ProcessWindowProvider
         var windows = new List<ProcessWindowInfo>();
         BOOL Filter(HWND hWnd, LPARAM lParam)
         {
-            var capLength = PInvoke.GetWindowTextLength(hWnd);
-            var lpString = default(PWSTR);
-            var _ = PInvoke.GetWindowText(hWnd, lpString, capLength);
-            var strTitle = lpString.AsSpan().ToString();
+            var bufferSize = PInvoke.GetWindowTextLength(hWnd) + 1;
+            string? windowName;
+            unsafe
+            {
+                fixed (char* windowNameChars = new char[bufferSize])
+                {
+                    if (PInvoke.GetWindowText(hWnd, windowNameChars, bufferSize) == 0)
+                    {
+                        var errorCode = Marshal.GetLastWin32Error();
+                        if (errorCode != 0)
+                        {
+                            throw new Win32Exception(errorCode);
+                        }
+                        return true;
+                    }
 
-            if (!PInvoke.IsWindowVisible(hWnd) || string.IsNullOrEmpty(strTitle))
-                return true;
+                    windowName = new string(windowNameChars);
 
+                    if (!PInvoke.IsWindowVisible(hWnd) || string.IsNullOrEmpty(windowName))
+                        return true;
+                }
+            }
+            
             int pid;
             unsafe
             {
-                uint* pidPtr = null;
-                PInvoke.GetWindowThreadProcessId(hWnd, pidPtr);
-                pid = (int)*pidPtr;
+                uint pidPtr = 0;
+                PInvoke.GetWindowThreadProcessId(hWnd, &pidPtr);
+                pid = (int)pidPtr;
             }
 
             try
             {
                 var process = Process.GetProcessById(pid);
-                windows.Add(new ProcessWindowInfo(pid, GetProcessExe(process), hWnd, strTitle));
+                windows.Add(new ProcessWindowInfo(pid, GetProcessExe(process), hWnd, windowName));
             }
             catch (ArgumentException ex)
             {

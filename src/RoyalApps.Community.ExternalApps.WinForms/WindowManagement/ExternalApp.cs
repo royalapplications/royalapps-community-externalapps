@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Linq;
 using System.Management;
 using System.Text;
 using System.Threading;
@@ -183,7 +184,7 @@ internal sealed class ExternalApp : IDisposable
             {
                 await Task.Delay(Configuration.MinWaitTime * 1000, cancellationToken);
                 var window = await FindWindowHandleAsync(
-                    Process, 
+                    process, 
                     Configuration.WindowTitleMatch,
                     Configuration.WindowTitleMatchSkip, 
                     Configuration.MaxWaitTime, 
@@ -197,9 +198,20 @@ internal sealed class ExternalApp : IDisposable
                     {
                         throw new MissingWindowException();
                     }
+                    var provider = new ProcessWindowProvider(_loggerFactory.CreateLogger<ProcessWindowProvider>());
+                    window = provider
+                        .GetProcessWindows()
+                        .First(w => w.WindowHandle.Value == queryWindowEventArgs.WindowHandle);
+                }
+
+                if (window == null)
+                {
+                    ApplicationState = ApplicationState.Stopped;
+                    throw new InvalidOperationException("No valid window was specified.");
                 }
 
                 process = Process.GetProcessById(window.ProcessId);
+                
             }
 
             if (process == null)
@@ -413,10 +425,7 @@ internal sealed class ExternalApp : IDisposable
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            await Task.Delay(250, cancellationToken);
-
             var provider = new ProcessWindowProvider(_loggerFactory.CreateLogger<ProcessWindowProvider>());
-
             foreach (var window in provider.GetProcessWindows())
             {
                 if (process != null && window.ProcessId != process.Id)
@@ -441,6 +450,7 @@ internal sealed class ExternalApp : IDisposable
                 return window;
             }
 
+            await Task.Delay(250, cancellationToken);
             tryCountMatch++;
         } while (tryCountMatch < maxWaitTime * 4);
 
@@ -516,7 +526,6 @@ internal sealed class ExternalApp : IDisposable
                 PInvoke.SetFocus(WindowHandle);
                 break;
             case EmbedMethod.Window:
-                // SendMessage(...)
                 PInvoke.BringWindowToTop(_innerHandle);
                 break;
         }
