@@ -10,8 +10,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RoyalApps.Community.ExternalApps.WinForms.Demo", "RoyalApps.Community.ExternalApps.WinForms.Demo\RoyalApps.Community.ExternalApps.WinForms.Demo.csproj", "{CBE784BB-78AD-42C1-894B-3EF0D9B5424D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RoyalApps.Community.ExternalApps.WinForms.DxDemo", "RoyalApps.Community.ExternalApps.WinForms.DxDemo\RoyalApps.Community.ExternalApps.WinForms.DxDemo.csproj", "{A2C830EA-9D62-4233-B718-4CBCC8CDFC7E}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -26,9 +24,5 @@ Global
 		{CBE784BB-78AD-42C1-894B-3EF0D9B5424D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{CBE784BB-78AD-42C1-894B-3EF0D9B5424D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{CBE784BB-78AD-42C1-894B-3EF0D9B5424D}.Release|Any CPU.Build.0 = Release|Any CPU
-		{A2C830EA-9D62-4233-B718-4CBCC8CDFC7E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{A2C830EA-9D62-4233-B718-4CBCC8CDFC7E}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{A2C830EA-9D62-4233-B718-4CBCC8CDFC7E}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{A2C830EA-9D62-4233-B718-4CBCC8CDFC7E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
