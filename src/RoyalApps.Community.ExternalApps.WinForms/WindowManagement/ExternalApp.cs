@@ -19,8 +19,6 @@ namespace RoyalApps.Community.ExternalApps.WinForms.WindowManagement;
 /// </summary>
 internal sealed class ExternalApp : IDisposable
 {
-    private HWND _innerHandle;
-
     private WINDOW_STYLE _embeddedGwlStyle;
     private WINDOW_STYLE _originalGwlStyle;
 
@@ -80,6 +78,11 @@ internal sealed class ExternalApp : IDisposable
     /// </summary>
     public HWND WindowHandle { get; private set; }
 
+    /// <summary>
+    /// The original window handle which is used to re-parent.
+    /// </summary>
+    public HWND OriginalWindowHandle { get; private set; }
+    
     /// <summary>
     /// Closes the external application.
     /// </summary>
@@ -482,7 +485,7 @@ internal sealed class ExternalApp : IDisposable
                 ownerControl.SetWindowPosition();
                 break;
             case EmbedMethod.Window:
-                _innerHandle = WindowHandle;
+                OriginalWindowHandle = WindowHandle;
                 ownerControl.Invoke(() =>
                 {
                     WindowHandle = ExternalApps.EmbedWindow(ownerControl.ControlHandle, WindowHandle, Process);
@@ -526,7 +529,7 @@ internal sealed class ExternalApp : IDisposable
                 PInvoke.SetFocus(WindowHandle);
                 break;
             case EmbedMethod.Window:
-                PInvoke.BringWindowToTop(_innerHandle);
+                PInvoke.BringWindowToTop(OriginalWindowHandle);
                 break;
         }
     }
