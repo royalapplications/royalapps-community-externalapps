@@ -36,7 +36,7 @@ public class ExternalAppHost : Control
     /// <summary>
     /// The Handle property as HWND.
     /// </summary>
-    internal HWND ControlHandle => new(Handle);
+    internal HWND ControlHandle { get; private set; }
 
     private ExternalApp? _externalApp;
     private ILogger? _logger;
@@ -189,6 +189,13 @@ public class ExternalAppHost : Control
         base.Dispose(disposing);
     }
 
+    /// <inheritdoc />
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        ControlHandle = new(Handle);
+    }
+
     /// <summary>
     /// Focuses the external application. 
     /// </summary>
@@ -290,7 +297,7 @@ public class ExternalAppHost : Control
 
         Invoke(Focus);
 
-        //_externalApp.FocusApplication();
+        _externalApp.FocusApplication();
     }
 
     /// <inheritdoc />
@@ -303,29 +310,24 @@ public class ExternalAppHost : Control
     /// <inheritdoc />
     protected override void WndProc(ref Message m)
     {
-        Logger.LogDebug("ExternalAppHost hWnd: {HWnd} Message: 0x{Msg:X} WParam: 0x{WParam:X}, LParam: 0x{LParam:X}", m.HWnd.ToString(), m.Msg, m.WParam, m.LParam);
         switch ((uint) m.Msg)
         {
-            // case PInvoke.WM_PARENTNOTIFY:
-            //     var notifi = (uint)m.WParam == PInvoke.WM_SETFOCUS;
-            //     Logger.LogDebug("WM_PARENTNOTIFI: {Notifi}", notifi);
-            //     break;
+            case PInvoke.WM_APP when (uint)m.WParam == PInvoke.WM_SETFOCUS:
+                RaiseApplicationActivated();
+                break;
             case PInvoke.WM_SETFOCUS:
             case PInvoke.WM_MOUSEACTIVATE:
             case PInvoke.WM_LBUTTONDOWN:
             case PInvoke.WM_MDIACTIVATE:
             {
-                // if (IsLeftMouseButtonDown)
-                // {
-                //     base.WndProc(ref m);
-                //     return;
-                // }
-
-                // notify host application that the external app area has been clicked
-                // RaiseApplicationActivated();
+                if (IsLeftMouseButtonDown)
+                {
+                    base.WndProc(ref m);
+                    return;
+                }
 
                 // make sure the external application gets the input focus
-                // FocusApplication(false);
+                FocusApplication(false);
                 break;
             }
         }
