@@ -5,6 +5,7 @@ CreateJobObject
 DestroyWindow
 EnumDesktopWindows
 GetClientRect
+GetSystemMenu
 GetWindowLong
 GetWindowRect
 GetWindowText
@@ -12,6 +13,7 @@ GetWindowTextLength
 GetWindowThreadProcessId
 IsWindowVisible
 MoveWindow
+PostMessage
 PrintWindow
 SendMessage
 SetFocus
@@ -20,16 +22,20 @@ SetInformationJobObject
 SetParent
 SetWindowLong
 SetWinEventHook
+TrackPopupMenuEx
 ShowWindow
 UnhookWinEvent
 
+WM_APP
 WM_LBUTTONDOWN
 WM_MDIACTIVATE
 WM_MOUSEACTIVATE
 WM_NCDESTROY
 WM_PARENTNOTIFY
 WM_SETFOCUS
-WM_APP
+WM_SYSCOMMAND
+
+TRACK_POPUP_MENU_FLAGS
 
 EVENT_OBJECT_NAMECHANGE
 

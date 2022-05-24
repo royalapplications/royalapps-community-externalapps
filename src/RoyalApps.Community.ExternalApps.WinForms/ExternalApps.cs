@@ -1,7 +1,10 @@
-﻿using System.ComponentModel;
+﻿using System;
+using System.ComponentModel;
 using System.Diagnostics;
+using System.Drawing;
 using Windows.Win32;
 using Windows.Win32.Foundation;
+using Windows.Win32.UI.WindowsAndMessaging;
 using RoyalApps.Community.ExternalApps.WinForms.WindowManagement;
 
 namespace RoyalApps.Community.ExternalApps.WinForms;
@@ -12,6 +15,7 @@ namespace RoyalApps.Community.ExternalApps.WinForms;
 public static class ExternalApps
 {
     private static readonly ProcessJobTracker ProcessJobTracker = new("ExternalApps");
+    private static bool _isInitialized;
     
     /// <summary>
     /// Must be called when the application host starts. 
@@ -19,6 +23,7 @@ public static class ExternalApps
     public static void Initialize()
     {
         ExternalAppsNative.InitShl();
+        _isInitialized = true;
     }
 
     /// <summary>
@@ -32,6 +37,9 @@ public static class ExternalApps
 
     internal static HWND EmbedWindow(HWND parentWindowHandle, HWND childWindowHandle, Process? process)
     {
+        if (!_isInitialized)
+            throw new InvalidOperationException("Cannot call EmbedWindow without calling 'ExternalApps.Initialize()' first.");
+        
         if (!PInvoke.GetClientRect(parentWindowHandle, out var parentWindowClientRect))
             throw new Win32Exception();
             
@@ -55,4 +63,28 @@ public static class ExternalApps
 
     }
     
+    internal static void ShowSystemMenu(HWND originalWindowHandle, HWND controlHandle, Point point)
+    {
+        var wMenu = PInvoke.GetSystemMenu(originalWindowHandle, false);
+        // Display the menu
+        unsafe
+        {
+            var command = PInvoke.TrackPopupMenuEx(
+                wMenu,
+                (uint) (TRACK_POPUP_MENU_FLAGS.TPM_LEFTBUTTON | TRACK_POPUP_MENU_FLAGS.TPM_RETURNCMD), 
+                point.X, 
+                point.Y, 
+                controlHandle);
+            
+            if (command.Value == 0)
+                return;
+            
+            PInvoke.PostMessage(
+                originalWindowHandle, 
+                PInvoke.WM_SYSCOMMAND, 
+                new WPARAM((nuint)command.Value), 
+                IntPtr.Zero);
+        }
+
+    }
 }

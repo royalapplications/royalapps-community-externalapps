@@ -45,7 +45,7 @@ public class ExternalAppHost : Control
     /// Gets or sets the <see cref="ILoggerFactory" /> used to create instances of <see cref="ILogger" />.
     /// Defaults to <see cref="NullLoggerFactory" />.
     /// </summary>
-    public ILoggerFactory LoggerFactory { get; set; } = NullLoggerFactory.Instance;
+    public ILoggerFactory LoggerFactory { get; set; }
 
     /// <summary>
     /// Gets the logger from the configured <see cref="LoggerFactory"/>.
@@ -73,6 +73,13 @@ public class ExternalAppHost : Control
     /// Provides access to the actual process object of the embedded window.
     /// </summary>
     public Process? Process => _externalApp?.Process;
+
+    /// <summary>
+    /// Returns the original window handle of the embedded external app window.
+    /// </summary>
+    public IntPtr OriginalWindowHandle => _externalApp == null 
+        ? IntPtr.Zero 
+        : new IntPtr(_externalApp.OriginalWindowHandle.Value);
     
     /// <summary>
     /// Raised after the application has been activated.
@@ -102,8 +109,9 @@ public class ExternalAppHost : Control
     /// <summary>
     /// Constructor
     /// </summary>
-    public ExternalAppHost()
+    public ExternalAppHost(ILoggerFactory? loggerFactory = null)
     {
+        LoggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
         SetStyle(ControlStyles.ContainerControl, false);
         SetStyle(ControlStyles.Selectable, true);
         TabStop = true;
@@ -168,6 +176,18 @@ public class ExternalAppHost : Control
         taskFactory.StartNew(() => StartAsync(configuration), TaskCreationOptions.LongRunning);
     }
 
+    /// <summary>
+    /// Shows the system menu of the embedded app.
+    /// </summary>
+    /// <param name="location">The location the menu should appear.</param>
+    public void ShowSystemMenu(Point location)
+    {
+        if (_externalApp == null)
+            return;
+        
+        ExternalApps.ShowSystemMenu(_externalApp.OriginalWindowHandle, ControlHandle, location);
+    }
+    
     /// <inheritdoc />
     protected override void Dispose(bool disposing)
     {
