@@ -60,6 +60,21 @@ public class ExternalAppHost : Control
     }
 
     /// <summary>
+    /// Gets the original window handle of the embedded window.
+    /// </summary>
+    public IntPtr EmbeddedWindowHandle
+    {
+        get
+        {
+            if (_externalApp != null)
+                return _externalApp.Configuration.EmbedMethod == EmbedMethod.Window
+                    ? _externalApp.OriginalWindowHandle
+                    : _externalApp.WindowHandle;
+            return IntPtr.Zero;
+        }
+    }
+
+    /// <summary>
     /// The configuration of the external application to embed.
     /// </summary>
     public ExternalAppConfiguration? Configuration => _externalApp?.Configuration;
@@ -74,13 +89,6 @@ public class ExternalAppHost : Control
     /// </summary>
     public Process? Process => _externalApp?.Process;
 
-    /// <summary>
-    /// Returns the original window handle of the embedded external app window.
-    /// </summary>
-    public IntPtr OriginalWindowHandle => _externalApp == null 
-        ? IntPtr.Zero 
-        : new IntPtr(_externalApp.OriginalWindowHandle.Value);
-    
     /// <summary>
     /// Raised after the application has been activated.
     /// </summary>
@@ -184,8 +192,10 @@ public class ExternalAppHost : Control
     {
         if (_externalApp == null)
             return;
-        
-        ExternalApps.ShowSystemMenu(_externalApp.OriginalWindowHandle, ControlHandle, location);
+
+        ExternalApps.ShowSystemMenu(new HWND(EmbeddedWindowHandle), 
+            ControlHandle, 
+            location);
     }
     
     /// <inheritdoc />
@@ -336,17 +346,10 @@ public class ExternalAppHost : Control
                 RaiseApplicationActivated();
                 break;
             case PInvoke.WM_SETFOCUS:
-            case PInvoke.WM_MOUSEACTIVATE:
-            case PInvoke.WM_LBUTTONDOWN:
-            case PInvoke.WM_MDIACTIVATE:
+                FocusApplication(false);
+                break;
+            case PInvoke.WM_MOUSEACTIVATE or PInvoke.WM_LBUTTONDOWN or PInvoke.WM_MDIACTIVATE when !IsLeftMouseButtonDown:
             {
-                if (IsLeftMouseButtonDown)
-                {
-                    base.WndProc(ref m);
-                    return;
-                }
-
-                // make sure the external application gets the input focus
                 FocusApplication(false);
                 break;
             }
@@ -438,7 +441,7 @@ public class ExternalAppHost : Control
     /// <summary>
     /// Sets the external application's window position to the default values.
     /// </summary>
-    internal void SetWindowPosition()
+    public void SetWindowPosition()
     {
         if (Disposing || IsDisposed)
             return;
