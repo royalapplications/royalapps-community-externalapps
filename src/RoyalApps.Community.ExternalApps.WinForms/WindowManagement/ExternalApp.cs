@@ -507,6 +507,8 @@ internal sealed class ExternalApp : IDisposable
         {
             case EmbedMethod.Control:
                 PInvoke.SetParent(WindowHandle, new HWND(IntPtr.Zero));
+                // ensure WS_DISABLED is always removed
+                _originalGwlStyle = _originalGwlStyle & ~WINDOW_STYLE.WS_DISABLED;
                 PInvoke.SetWindowLong(WindowHandle, WINDOW_LONG_PTR_INDEX.GWL_STYLE, (int)_originalGwlStyle);
                 IsEmbedded = false;
                 break;
@@ -583,7 +585,6 @@ internal sealed class ExternalApp : IDisposable
 
         PInvoke.SetWindowLong(childWindowHandle, WINDOW_LONG_PTR_INDEX.GWL_STYLE, (int) newStyle);
 
-        // this needs to run asynchronously to not block the UI thread
         do
         {
             try
