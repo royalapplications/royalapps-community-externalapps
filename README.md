@@ -32,14 +32,14 @@ Create an instance of the `ExternalAppConfiguration` class and set the `Executab
 
 #### Start
 Simply call:
-```
+```csharp
 ExternalAppHost.Start(externalAppConfiguration);
 ```
 to start and embed the application.
 
 #### Close
 To close the application, call:
-```
+```csharp
 ExternalAppHost.CloseApplication();
 ```
 Depending on the application, you may get a confirmation dialog in case there are unsaved changes. You can set the `ExternalAppConfiguration.KillOnClose` property to `true` to forcibly quit the application by killing the process.
@@ -49,16 +49,22 @@ Depending on the application, you may get a confirmation dialog in case there ar
 
 #### Detach Application Window
 Once the application is started and embedded, you can detach the application window by calling:
-```
+```csharp
 ExternalAppHost.DetachApplication();
 ```
 
 #### Re-Embed Application Window
-
 To re-embed a detached application window, simply call:
 ```
 ExternalAppHost.EmbedApplication();
 ```
+
+#### Show System Menu
+Shows the app's system menu on the specified location:
+```csharp
+ExternalAppHost.ShowSystemMenu(Point location);
+```
+
 #### Subscribe to Events
 * `ExternalAppHost.ApplicationStarted` is raised when the application has been started and embedded.
 * `ExternalAppHost.ApplicationClosed` is raised when the application was closed or killed (even outside of the hosting application).
