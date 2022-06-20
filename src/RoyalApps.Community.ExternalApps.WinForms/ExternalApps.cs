@@ -5,6 +5,7 @@ using System.Drawing;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.UI.WindowsAndMessaging;
+using Microsoft.Extensions.Logging;
 using RoyalApps.Community.ExternalApps.WinForms.WindowManagement;
 
 namespace RoyalApps.Community.ExternalApps.WinForms;
@@ -35,7 +36,7 @@ public static class ExternalApps
         ProcessJobTracker.Dispose();
     }
 
-    internal static HWND EmbedWindow(HWND parentWindowHandle, HWND childWindowHandle, Process? process)
+    internal static HWND EmbedWindow(HWND parentWindowHandle, HWND childWindowHandle, Process? process, ILogger logger)
     {
         if (!_isInitialized)
             throw new InvalidOperationException("Cannot call EmbedWindow without calling 'ExternalApps.Initialize()' first.");
@@ -49,8 +50,20 @@ public static class ExternalApps
             parentWindowClientRect.right - parentWindowClientRect.left, 
             parentWindowClientRect.bottom - parentWindowClientRect.top);
 
-        if (process != null) 
-            ProcessJobTracker.AddProcess(process);
+        try
+        {
+            if (process != null) 
+                ProcessJobTracker.AddProcess(process);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(
+                ex, 
+                "ProcessJobTracker could not add the process {FileName} with the id {Id}", 
+                process?.StartInfo.FileName, 
+                process?.Id
+                );
+        }
 
         return new HWND(containerHandle);
     }

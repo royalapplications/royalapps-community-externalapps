@@ -488,7 +488,7 @@ internal sealed class ExternalApp : IDisposable
                 OriginalWindowHandle = WindowHandle;
                 ownerControl.Invoke(() =>
                 {
-                    WindowHandle = ExternalApps.EmbedWindow(ownerControl.ControlHandle, WindowHandle, Process);
+                    WindowHandle = ExternalApps.EmbedWindow(ownerControl.ControlHandle, WindowHandle, Process, _logger);
                 });
                 IsEmbedded = true;
                 break;
