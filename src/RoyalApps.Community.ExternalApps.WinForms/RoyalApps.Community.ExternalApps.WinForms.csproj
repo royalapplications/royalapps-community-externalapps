@@ -11,17 +11,17 @@
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <PackageIcon>RoyalApps_1024.png</PackageIcon>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
-        <Version>0.3.1</Version>
+        <Version>0.3.2</Version>
         <Nullable>enable</Nullable>
         <LangVersion>10</LangVersion>
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
-        <NoWarn>NU1701;NU5100</NoWarn>
+        <NoWarn>NU1701;NU5100;CS8981</NoWarn>
     </PropertyGroup>
 
     <PropertyGroup>
-        <TargetFrameworks>net462;net5.0-windows;net6.0-windows</TargetFrameworks>
-        <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+        <TargetFrameworks>net462;net5.0-windows;net6.0-windows;net7.0-windows</TargetFrameworks>
+        <RuntimeIdentifiers>win</RuntimeIdentifiers>
         <UseWindowsForms>true</UseWindowsForms>
         <IncludeSymbols>true</IncludeSymbols>
     </PropertyGroup>
@@ -39,7 +39,7 @@
         </PackageReference>
     </ItemGroup>
 
-    <ItemGroup Condition="'$(TargetFramework)' == 'net5.0-windows' or '$(TargetFramework)' == 'net6.0-windows'">
+    <ItemGroup Condition="'$(TargetFramework)' == 'net5.0-windows' or '$(TargetFramework)' == 'net6.0-windows' or '$(TargetFramework)' == 'net7.0-windows'">
         <PackageReference Include="System.Management" Version="6.0.0" />
     </ItemGroup>
 
