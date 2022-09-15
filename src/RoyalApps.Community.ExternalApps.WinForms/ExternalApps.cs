@@ -21,18 +21,36 @@ public static class ExternalApps
     /// <summary>
     /// Must be called when the application host starts. 
     /// </summary>
-    public static void Initialize()
+    public static void Initialize(ILogger? logger = null)
     {
-        ExternalAppsNative.InitShl();
-        _isInitialized = true;
+        try
+        {
+            ExternalAppsNative.InitShl();
+            _isInitialized = true;
+        }
+        catch (Exception ex)
+        {
+            logger?.LogWarning(
+                ex,
+                "ExternalApps initialization failed. Window embedding may not work.");
+        }
     }
 
     /// <summary>
     /// Must be called when before the application host is closed.
     /// </summary>
-    public static void Cleanup()
+    public static void Cleanup(ILogger? logger = null)
     {
-        ExternalAppsNative.DoneShl();
+        try
+        {
+            ExternalAppsNative.DoneShl();
+        }
+        catch (Exception ex)
+        {
+            logger?.LogWarning(
+                ex,
+                "ExternalApps cleanup failed.");
+        }
         ProcessJobTracker.Dispose();
     }
 
