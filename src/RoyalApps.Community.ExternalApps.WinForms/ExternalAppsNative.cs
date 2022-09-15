@@ -6,12 +6,24 @@ namespace RoyalApps.Community.ExternalApps.WinForms;
 
 internal static class ExternalAppsNative
 {
-    [DllImport(@"WinEmbed.dll", SetLastError = true)]
+#if ARM64
+    [DllImport(@"WinEmbed.arm64.dll", SetLastError = true)]
+#else
+    [DllImport(@"WinEmbed.x64.dll", SetLastError = true)]
+#endif
     public static extern void InitShl();
-    
-    [DllImport(@"WinEmbed.dll", SetLastError = true)]
+
+#if ARM64
+    [DllImport(@"WinEmbed.arm64.dll", SetLastError = true)]
+#else
+    [DllImport(@"WinEmbed.x64.dll", SetLastError = true)]
+#endif
     public static extern void DoneShl();
 
-    [DllImport(@"WinEmbed.dll", SetLastError = true)]
+#if ARM64
+    [DllImport(@"WinEmbed.arm64.dll", SetLastError = true)]
+#else
+    [DllImport(@"WinEmbed.x64.dll", SetLastError = true)]
+#endif
     public static extern IntPtr CreateShlWnd(IntPtr parentHandle, IntPtr childHandle, int width, int height);
 }

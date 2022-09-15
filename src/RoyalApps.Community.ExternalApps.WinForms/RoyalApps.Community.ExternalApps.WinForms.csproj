@@ -11,13 +11,21 @@
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <PackageIcon>RoyalApps_1024.png</PackageIcon>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
-        <Version>0.3.2</Version>
+        <Version>0.3.3</Version>
         <Nullable>enable</Nullable>
         <LangVersion>10</LangVersion>
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
-        <NoWarn>NU1701;NU5100;CS8981</NoWarn>
+        <NoWarn>NU1603,NU1701,NU5100,CS8981</NoWarn>
     </PropertyGroup>
+
+	<PropertyGroup Condition="'$(Platform)'!='x64'">
+		<DefineConstants>ARM64</DefineConstants>
+	</PropertyGroup>
+
+	<PropertyGroup Condition="'$(Platform)'=='x64'">
+		<DefineConstants>X64</DefineConstants>
+	</PropertyGroup>
 
     <PropertyGroup>
         <TargetFrameworks>net462;net5.0-windows;net6.0-windows;net7.0-windows</TargetFrameworks>
@@ -57,11 +65,19 @@
     </ItemGroup>
 
     <ItemGroup>
-        <None Include="lib\WinEmbed.dll" Pack="true" PackagePath="runtimes\win-x64\native" />
-        <Content Include="lib\WinEmbed.dll">
+        <None Include="lib\WinEmbed.x64.dll" Pack="true" PackagePath="runtimes\win-x64\native" />
+        <Content Include="lib\WinEmbed.x64.dll">
             <Link>%(Filename)%(Extension)</Link>
             <CopyToOutputDirectory>Always</CopyToOutputDirectory>
         </Content>
     </ItemGroup>
+
+	<ItemGroup>
+		<None Include="lib\WinEmbed.arm64.dll" Pack="true" PackagePath="runtimes\win-arm64\native" />
+		<Content Include="lib\WinEmbed.arm64.dll">
+			<Link>%(Filename)%(Extension)</Link>
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</Content>
+	</ItemGroup>
 
 </Project>
