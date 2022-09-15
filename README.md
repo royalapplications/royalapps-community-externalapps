@@ -2,7 +2,7 @@
 
 [![NuGet Version](https://img.shields.io/nuget/v/RoyalApps.Community.ExternalApps.WinForms.svg?style=flat)](https://www.nuget.org/packages/RoyalApps.Community.ExternalApps.WinForms)
 [![NuGet Downloads](https://img.shields.io/nuget/dt/RoyalApps.Community.ExternalApps.WinForms.svg?color=green)](https://www.nuget.org/packages/RoyalApps.Community.ExternalApps.WinForms)
-[![.NET Framework](https://img.shields.io/badge/.NET%20Framework-%3E%3D%204.5-512bd4)](https://dotnet.microsoft.com/download)
+[![.NET Framework](https://img.shields.io/badge/.NET%20Framework-%3E%3D%204.62-512bd4)](https://dotnet.microsoft.com/download)
 [![.NET](https://img.shields.io/badge/.NET-%3E%3D%20%205.0-blueviolet)](https://dotnet.microsoft.com/download)
 
 RoyalApps.Community.ExternalApps contains projects/packages to easily embed/use other external applications in an application.
