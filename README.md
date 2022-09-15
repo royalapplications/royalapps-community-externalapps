@@ -83,5 +83,10 @@ In the **Application** menu you can detach and re-embed the active external appl
 ## WinEmbed.dll
 This project includes a dll called WinEmbed.dll (in the /lib folder) which handles most of the Windows native stuff. You can find the C/C++ code in the /src/WinEmbed directory. To build this dll from source, you need Visual Studio 2022 or later and also the [WDK](https://docs.microsoft.com/en-us/windows-hardware/drivers/download-the-wdk) installed.
 
+For the ARM64 build to compile, install the following tools using Visual Studio 2022 installer:
+```
+MSVC v143 - VS 2022 C++ ARM64 build tools (latest)
+```
+
 ## Acknowledgements
 Special thanks to [Alex](https://github.com/rbmm) for helping out with all the native code challenges.
