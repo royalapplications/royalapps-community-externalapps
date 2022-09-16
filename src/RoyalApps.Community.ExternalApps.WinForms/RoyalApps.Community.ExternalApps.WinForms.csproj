@@ -11,24 +11,18 @@
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <PackageIcon>RoyalApps_1024.png</PackageIcon>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
-        <Version>0.3.3</Version>
+        <Version>0.3.4</Version>
         <Nullable>enable</Nullable>
         <LangVersion>10</LangVersion>
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
         <NoWarn>NU1603,NU1701,NU5100,CS8981</NoWarn>
+        <Configurations>Debug;Release</Configurations>
+        <Platforms>AnyCPU;x64;ARM64</Platforms>
     </PropertyGroup>
 
-	<PropertyGroup Condition="'$(Platform)'!='x64'">
-		<DefineConstants>ARM64</DefineConstants>
-	</PropertyGroup>
-
-	<PropertyGroup Condition="'$(Platform)'=='x64'">
-		<DefineConstants>X64</DefineConstants>
-	</PropertyGroup>
-
     <PropertyGroup>
-        <TargetFrameworks>net462;net5.0-windows;net6.0-windows;net7.0-windows</TargetFrameworks>
+        <TargetFrameworks>net472;net5.0-windows;net6.0-windows;net7.0-windows</TargetFrameworks>
         <RuntimeIdentifiers>win</RuntimeIdentifiers>
         <UseWindowsForms>true</UseWindowsForms>
         <IncludeSymbols>true</IncludeSymbols>

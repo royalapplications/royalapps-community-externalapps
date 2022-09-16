@@ -2,10 +2,12 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
+using System.Runtime.InteropServices;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.UI.WindowsAndMessaging;
 using Microsoft.Extensions.Logging;
+using RoyalApps.Community.ExternalApps.WinForms.Native;
 using RoyalApps.Community.ExternalApps.WinForms.WindowManagement;
 
 namespace RoyalApps.Community.ExternalApps.WinForms;
@@ -17,6 +19,9 @@ public static class ExternalApps
 {
     private static readonly ProcessJobTracker ProcessJobTracker = new("ExternalApps");
     private static bool _isInitialized;
+    private static readonly Api Api = RuntimeInformation.ProcessArchitecture == Architecture.Arm64
+        ? new ApiArm64()
+        : new ApiX64();
     
     /// <summary>
     /// Must be called when the application host starts. 
@@ -25,14 +30,14 @@ public static class ExternalApps
     {
         try
         {
-            ExternalAppsNative.InitShl();
+            Api.InitShell();
             _isInitialized = true;
         }
         catch (Exception ex)
         {
             logger?.LogWarning(
                 ex,
-                "ExternalApps initialization failed. Window embedding may not work.");
+                "ExternalApps initialization failed. Window embedding may not work");
         }
     }
 
@@ -43,13 +48,13 @@ public static class ExternalApps
     {
         try
         {
-            ExternalAppsNative.DoneShl();
+            Api.DoneShell();
         }
         catch (Exception ex)
         {
             logger?.LogWarning(
                 ex,
-                "ExternalApps cleanup failed.");
+                "ExternalApps cleanup failed");
         }
         ProcessJobTracker.Dispose();
     }
@@ -62,7 +67,7 @@ public static class ExternalApps
         if (!PInvoke.GetClientRect(parentWindowHandle, out var parentWindowClientRect))
             throw new Win32Exception();
             
-        var containerHandle = ExternalAppsNative.CreateShlWnd(
+        var containerHandle = Api.CreateShellWnd(
             parentWindowHandle, 
             childWindowHandle, 
             parentWindowClientRect.right - parentWindowClientRect.left, 
