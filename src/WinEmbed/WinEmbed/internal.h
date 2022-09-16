@@ -5,6 +5,8 @@ struct FOCUS_INFO;
 EXTERN_C {
 	extern IMAGE_DOS_HEADER __ImageBase;
 
+#ifndef DbgPrint
+
 	DECLSPEC_IMPORT
 		ULONG
 		__cdecl
@@ -12,7 +14,7 @@ EXTERN_C {
 		_In_z_ _Printf_format_string_ PCSTR Format,
 		...
 		);
-
+#endif // !DbgPrint
 };
 
 class ShellWnd
