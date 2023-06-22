@@ -48,7 +48,7 @@ public partial class FormMain : Form
         MenuItemDetach.Enabled = false;
         MenuItemApplication.Tag = null;
 
-        if (ActiveControl.FindFocusedControl() is not ExternalAppHost externalAppHost)
+        if (ActiveControl?.FindFocusedControl() is not ExternalAppHost externalAppHost)
             return;
 
         MenuItemApplication.Tag = externalAppHost;
