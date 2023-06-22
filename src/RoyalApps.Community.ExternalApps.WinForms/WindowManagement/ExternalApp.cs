@@ -204,7 +204,7 @@ internal sealed class ExternalApp : IDisposable
                     var provider = new ProcessWindowProvider(_loggerFactory.CreateLogger<ProcessWindowProvider>());
                     window = provider
                         .GetProcessWindows()
-                        .First(w => w.WindowHandle.Value == queryWindowEventArgs.WindowHandle);
+                        .First(w => w.WindowHandle.Value.ToInt32() == queryWindowEventArgs.WindowHandle);
                 }
 
                 if (window == null)
@@ -312,11 +312,10 @@ internal sealed class ExternalApp : IDisposable
             configuration.Executable ?? string.Empty,
             configuration.Arguments ?? string.Empty)
         {
-            WindowStyle = configuration.StartHidden && !configuration.StartExternal
+            WindowStyle = configuration is {StartHidden: true, StartExternal: false}
                 ? ProcessWindowStyle.Minimized
                 : ProcessWindowStyle.Normal,
-            CreateNoWindow = configuration.StartHidden &&
-                             !configuration.StartExternal,
+            CreateNoWindow = configuration is {StartHidden: true, StartExternal: false},
             UseShellExecute = true,
             WorkingDirectory = configuration.WorkingDirectory ?? ".",
             LoadUserProfile = configuration.LoadUserProfile,
@@ -376,13 +375,8 @@ internal sealed class ExternalApp : IDisposable
                 if (managementBaseObject is not ManagementObject wmiWin32Process)
                     continue;
 
-                var commandLine = wmiWin32Process["CommandLine"] != null
-                    ? wmiWin32Process["CommandLine"].ToString()
-                    : string.Empty;
-
-                var processIdString = wmiWin32Process["ProcessId"] != null
-                    ? wmiWin32Process["ProcessId"].ToString()
-                    : string.Empty;
+                var commandLine = wmiWin32Process["CommandLine"].ToString();
+                var processIdString = wmiWin32Process["ProcessId"].ToString();
 
                 // check if we can parse the process id and if we have a valid command line
                 if (!int.TryParse(processIdString, out var processId))
