@@ -89,4 +89,4 @@ MSVC v143 - VS 2022 C++ ARM64 build tools (latest)
 ```
 
 ## Acknowledgements
-Special thanks to [Alex](https://github.com/rbmm) for helping out with all the native code challenges.
+Special thanks to [Alex](https://github.com/rbmm) for helping out with all the native code challenges. (+)
