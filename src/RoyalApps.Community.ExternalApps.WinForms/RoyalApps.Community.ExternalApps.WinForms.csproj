@@ -22,7 +22,7 @@
     </PropertyGroup>
 
     <PropertyGroup>
-        <TargetFrameworks>net472;net6.0-windows;net7.0-windows</TargetFrameworks>
+        <TargetFrameworks>net472;net6.0-windows;net7.0-windows;net8.0-windows</TargetFrameworks>
         <RuntimeIdentifier Condition="$(Platform) == 'x64'">win10-x64</RuntimeIdentifier>
         <RuntimeIdentifier Condition="$(Platform) == 'ARM64'">win10-arm64</RuntimeIdentifier>
         <UseWindowsForms>true</UseWindowsForms>
@@ -43,7 +43,7 @@
     </ItemGroup>
 
     <ItemGroup Condition="'$(TargetFramework)' == 'net5.0-windows' or '$(TargetFramework)' == 'net6.0-windows' or '$(TargetFramework)' == 'net7.0-windows'">
-        <PackageReference Include="System.Management" Version="7.0.2" />
+        <PackageReference Include="System.Management" Version="8.0.0" />
     </ItemGroup>
 
     <ItemGroup>
