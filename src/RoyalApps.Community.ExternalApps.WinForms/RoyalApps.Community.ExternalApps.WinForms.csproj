@@ -42,7 +42,7 @@
         </PackageReference>
     </ItemGroup>
 
-    <ItemGroup Condition="'$(TargetFramework)' == 'net5.0-windows' or '$(TargetFramework)' == 'net6.0-windows' or '$(TargetFramework)' == 'net7.0-windows'">
+    <ItemGroup Condition="'$(TargetFramework)' == 'net5.0-windows' or '$(TargetFramework)' == 'net6.0-windows' or '$(TargetFramework)' == 'net7.0-windows' or '$(TargetFramework)' == 'net8.0-windows'">
         <PackageReference Include="System.Management" Version="8.0.0" />
     </ItemGroup>
 
