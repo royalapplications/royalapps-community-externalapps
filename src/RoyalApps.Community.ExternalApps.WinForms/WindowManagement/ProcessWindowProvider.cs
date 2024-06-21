@@ -34,10 +34,7 @@ internal sealed class ProcessWindowProvider
                     {
                         var errorCode = Marshal.GetLastWin32Error();
                         if (errorCode != 0)
-                        {
-                            throw new Win32Exception(errorCode);
-                        }
-                        return true;
+                            return true;
                     }
 
                     windowName = new string(windowNameChars);
