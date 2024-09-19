@@ -16,6 +16,7 @@ using Windows.Win32.Graphics.Gdi;
 using Windows.Win32.Storage.Xps;
 using Windows.Win32.UI.Accessibility;
 using Windows.Win32.UI.WindowsAndMessaging;
+using System.ComponentModel;
 // ReSharper disable CommentTypo
 // ReSharper disable StringLiteralTypo
 
@@ -36,6 +37,7 @@ public class ExternalAppHost : Control
     /// <summary>
     /// The Handle property as HWND.
     /// </summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     internal HWND ControlHandle { get; private set; }
 
     private ExternalApp? _externalApp;
@@ -45,6 +47,7 @@ public class ExternalAppHost : Control
     /// Gets or sets the <see cref="ILoggerFactory" /> used to create instances of <see cref="ILogger" />.
     /// Defaults to <see cref="NullLoggerFactory" />.
     /// </summary>
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public ILoggerFactory LoggerFactory { get; set; }
 
     /// <summary>
