@@ -66,7 +66,7 @@
 		</Content>
 	</ItemGroup>
 
-    <ItemGroup Condition="'$(TargetFramework)' == 'net472'">
+    <ItemGroup Condition="'$(TargetFramework)' == 'net4.7.2'">
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
         <PackageReference Include="System.Management" Version="8.0.0" />
     </ItemGroup>
