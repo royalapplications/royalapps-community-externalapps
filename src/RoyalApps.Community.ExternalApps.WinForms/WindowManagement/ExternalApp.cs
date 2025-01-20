@@ -56,7 +56,7 @@ internal sealed class ExternalApp : IDisposable
     /// <summary>
     /// Gets a value indicating whether a window handle has been set.
     /// </summary>
-    public bool HasWindow => WindowHandle.Value != IntPtr.Zero;
+    public bool HasWindow => !WindowHandle.IsNull;
 
     /// <summary>
     /// Gets a value indicating whether the external application's process is running.
@@ -135,7 +135,7 @@ internal sealed class ExternalApp : IDisposable
     /// <returns>A string containing the window title or an empty string, if not found.</returns>
     public string GetWindowTitle()
     {
-        if (Process == null || WindowHandle.Value == IntPtr.Zero)
+        if (Process == null || WindowHandle.IsNull)
             return string.Empty;
         try
         {
@@ -204,7 +204,7 @@ internal sealed class ExternalApp : IDisposable
                     var provider = new ProcessWindowProvider(_loggerFactory.CreateLogger<ProcessWindowProvider>());
                     window = provider
                         .GetProcessWindows()
-                        .First(w => w.WindowHandle.Value.ToInt32() == queryWindowEventArgs.WindowHandle);
+                        .First(w => w.WindowHandle == (IntPtr)queryWindowEventArgs.WindowHandle);
                 }
 
                 if (window == null)
@@ -416,7 +416,7 @@ internal sealed class ExternalApp : IDisposable
         var tryCountMatch = 0;
         var titleMatches = 0;
 
-        var currentWindowHandle = process != null ? new HWND(process.MainWindowHandle) : default;
+        var currentWindowHandle = process != null ? new HWND(process.MainWindowHandle) : HWND.Null;
 
         do
         {
@@ -433,7 +433,7 @@ internal sealed class ExternalApp : IDisposable
                     continue;
 
                 // we are still on the same window
-                if (titleMatchSkip > 0 && currentWindowHandle == window.WindowHandle.Value)
+                if (titleMatchSkip > 0 && currentWindowHandle == window.WindowHandle)
                     continue;
 
                 // if window title matches should be skipped
