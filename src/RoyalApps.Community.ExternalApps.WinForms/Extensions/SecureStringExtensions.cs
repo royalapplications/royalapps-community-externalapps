@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Security;
 
 namespace RoyalApps.Community.ExternalApps.WinForms.Extensions;
