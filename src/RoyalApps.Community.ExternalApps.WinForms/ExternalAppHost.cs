@@ -1,4 +1,4 @@
-﻿using RoyalApps.Community.ExternalApps.WinForms.Extensions;
+using RoyalApps.Community.ExternalApps.WinForms.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoyalApps.Community.ExternalApps.WinForms.WindowManagement;
