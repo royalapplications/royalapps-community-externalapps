@@ -22,9 +22,9 @@ public static class ExternalApps
     private static readonly Api Api = RuntimeInformation.ProcessArchitecture == Architecture.Arm64
         ? new ApiArm64()
         : new ApiX64();
-    
+
     /// <summary>
-    /// Must be called when the application host starts. 
+    /// Must be called when the application host starts.
     /// </summary>
     public static void Initialize(ILogger? logger = null)
     {
@@ -63,27 +63,27 @@ public static class ExternalApps
     {
         if (!_isInitialized)
             throw new InvalidOperationException("Cannot call EmbedWindow without calling 'ExternalApps.Initialize()' first.");
-        
+
         if (!PInvoke.GetClientRect(parentWindowHandle, out var parentWindowClientRect))
             throw new Win32Exception();
-            
+
         var containerHandle = Api.CreateShellWnd(
-            parentWindowHandle, 
-            childWindowHandle, 
-            parentWindowClientRect.right - parentWindowClientRect.left, 
+            parentWindowHandle,
+            childWindowHandle,
+            parentWindowClientRect.right - parentWindowClientRect.left,
             parentWindowClientRect.bottom - parentWindowClientRect.top);
 
         try
         {
-            if (process != null) 
+            if (process != null)
                 ProcessJobTracker.AddProcess(process);
         }
         catch (Exception ex)
         {
             logger.LogWarning(
-                ex, 
-                "ProcessJobTracker could not add the process {FileName} with the id {Id}", 
-                process?.StartInfo.FileName, 
+                ex,
+                "ProcessJobTracker could not add the process {FileName} with the id {Id}",
+                process?.StartInfo.FileName,
                 process?.Id
                 );
         }
@@ -98,7 +98,7 @@ public static class ExternalApps
         return new HWND(newWindowHandle);
 
     }
-    
+
     internal static void ShowSystemMenu(HWND originalWindowHandle, HWND controlHandle, Point point)
     {
         var wMenu = PInvoke.GetSystemMenu(originalWindowHandle, false);
@@ -107,18 +107,18 @@ public static class ExternalApps
         {
             var command = PInvoke.TrackPopupMenuEx(
                 wMenu,
-                (uint) (TRACK_POPUP_MENU_FLAGS.TPM_LEFTBUTTON | TRACK_POPUP_MENU_FLAGS.TPM_RETURNCMD), 
-                point.X, 
-                point.Y, 
+                (uint) (TRACK_POPUP_MENU_FLAGS.TPM_LEFTBUTTON | TRACK_POPUP_MENU_FLAGS.TPM_RETURNCMD),
+                point.X,
+                point.Y,
                 controlHandle);
-            
+
             if (command.Value == 0)
                 return;
-            
+
             PInvoke.PostMessage(
-                originalWindowHandle, 
-                PInvoke.WM_SYSCOMMAND, 
-                new WPARAM((nuint)command.Value), 
+                originalWindowHandle,
+                PInvoke.WM_SYSCOMMAND,
+                new WPARAM((nuint)command.Value),
                 IntPtr.Zero);
         }
 

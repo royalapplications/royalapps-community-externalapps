@@ -43,7 +43,7 @@ internal sealed class ProcessWindowProvider
                         return true;
                 }
             }
-            
+
             int pid;
             unsafe
             {

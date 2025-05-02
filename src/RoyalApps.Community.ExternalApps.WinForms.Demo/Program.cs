@@ -10,7 +10,7 @@ namespace RoyalApps.Community.ExternalApps.WinForms.Demo;
 internal static class Program
 {
     internal static readonly StringWriter ConsoleOutput = new();
-    
+
     /// <summary>
     ///  The main entry point for the application.
     /// </summary>
@@ -28,9 +28,9 @@ internal static class Program
                     options.IncludeScopes = true;
                 })
             ).Build();
-        
+
         var loggerFactory = host.Services.GetRequiredService<ILoggerFactory>();
-        
+
         // To customize application configuration such as set high DPI settings or default font,
         // see https://aka.ms/applicationconfiguration.
         ApplicationConfiguration.Initialize();

@@ -50,7 +50,7 @@ class ShellWnd
 	}
 
 public:
-	
+
 	ShellWnd(HWND hwnd) : _hwnd(hwnd)
 	{
 		DbgPrint("%s<%p>\n", __FUNCTION__, this);

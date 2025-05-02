@@ -10,7 +10,7 @@ RoyalApps.Community.ExternalApps contains projects/packages to easily embed/use 
 
 The ExternalAppHost control starts the configured process and embeds the application window into the control.
 
-> **Warning**  
+> **Warning**
 > What this control does is not exactly a Microsoft supported scenario! Please read [Raymond Chen's blog post 'Is it legal to have a cross-process parent/child or owner/owned window relationship?'](https://devblogs.microsoft.com/oldnewthing/20130412-00/?p=4683) for more details. **Spoiler alert:** Yes, it's technically *legal*. It's also technically *legal* to [juggle chainsaws](https://www.youtube.com/watch?v=ti3MkTt5qv4)!
 
 ## Getting Started
@@ -44,7 +44,7 @@ ExternalAppHost.CloseApplication();
 ```
 Depending on the application, you may get a confirmation dialog in case there are unsaved changes. You can set the `ExternalAppConfiguration.KillOnClose` property to `true` to forcibly quit the application by killing the process.
 
-> **Note**  
+> **Note**
 > All processes which are started by the control will be closed/killed when the main application is closed or killed.
 
 #### Detach Application Window
@@ -75,8 +75,8 @@ ExternalAppHost.ShowSystemMenu(Point location);
 The demo application is quite simple. It has two tab controls (one left and one right) and a bottom panel for log output. Use the toolbar to enter an executable to embed. The **Add** drop down allows you to choose the left or the right tab control.
 
 There are two embed-methods available:
-* **Embed as Control:** Only the client area of the external app window is embedded (without the main menu). The limitation of this method is that some applications may look like they are not focused/active.  
-* **Embed as Window:** The whole window is embedded including the main menu (if available). The limitation of this method is that the ALT-TAB order may be incorrect. 
+* **Embed as Control:** Only the client area of the external app window is embedded (without the main menu). The limitation of this method is that some applications may look like they are not focused/active.
+* **Embed as Window:** The whole window is embedded including the main menu (if available). The limitation of this method is that the ALT-TAB order may be incorrect.
 
 In the **Application** menu you can detach and re-embed the active external application.
 

@@ -34,14 +34,14 @@ internal sealed class ExternalApp : IDisposable
     }
 
     /// <summary>
-    /// Raised when the external application's process exits. 
+    /// Raised when the external application's process exits.
     /// </summary>
     public event EventHandler? ProcessExited;
 
     /// <summary>
     /// Raised when no window with the matching criteria has been found.
     /// </summary>
-    public event EventHandler<QueryWindowEventArgs>? QueryWindow; 
+    public event EventHandler<QueryWindowEventArgs>? QueryWindow;
 
     /// <summary>
     /// Gets the current state of the external application.
@@ -64,12 +64,12 @@ internal sealed class ExternalApp : IDisposable
     public bool IsRunning => Process is {HasExited: false};
 
     /// <summary>
-    /// Gets or sets a value indicating whether the external application is embedded or not. 
+    /// Gets or sets a value indicating whether the external application is embedded or not.
     /// </summary>
     public bool IsEmbedded { get; private set; }
 
     /// <summary>
-    /// Gets the external application's process. 
+    /// Gets the external application's process.
     /// </summary>
     public Process? Process { get; private set; }
 
@@ -82,7 +82,7 @@ internal sealed class ExternalApp : IDisposable
     /// The original window handle which is used to re-parent.
     /// </summary>
     public HWND OriginalWindowHandle { get; private set; }
-    
+
     /// <summary>
     /// Closes the external application.
     /// </summary>
@@ -187,10 +187,10 @@ internal sealed class ExternalApp : IDisposable
             {
                 await Task.Delay(Configuration.MinWaitTime * 1000, cancellationToken);
                 var window = await FindWindowHandleAsync(
-                    process, 
+                    process,
                     Configuration.WindowTitleMatch,
-                    Configuration.WindowTitleMatchSkip, 
-                    Configuration.MaxWaitTime, 
+                    Configuration.WindowTitleMatchSkip,
+                    Configuration.MaxWaitTime,
                     cancellationToken);
 
                 if (window == null)
@@ -214,7 +214,7 @@ internal sealed class ExternalApp : IDisposable
                 }
 
                 process = Process.GetProcessById(window.ProcessId);
-                
+
             }
 
             if (process == null)

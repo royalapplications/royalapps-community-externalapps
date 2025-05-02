@@ -32,7 +32,7 @@ public partial class FormMain : Form
         };
         _logWriterTimer.Interval = 500;
         _logWriterTimer.Enabled = true;
-        
+
         TabControlLeft.TabPages.Clear();
         TabControlRight.TabPages.Clear();
     }
@@ -131,13 +131,13 @@ public partial class FormMain : Form
 
         Program.ConsoleOutput.GetStringBuilder().Clear();
 
-        externalAppConfiguration.EmbedMethod = MenuItemControl.Checked 
-            ? EmbedMethod.Control 
+        externalAppConfiguration.EmbedMethod = MenuItemControl.Checked
+            ? EmbedMethod.Control
             : EmbedMethod.Window;
-        
+
         var fileInfo = new FileInfo(externalAppConfiguration.Executable!);
         var caption = fileInfo.Name;
-        
+
         var tabPage = new TabPage(caption);
         var externalApp = new ExternalAppHost
         {
