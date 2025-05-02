@@ -2,6 +2,7 @@
   <Folder Name="/Solution Items/">
     <File Path="..\.gitignore" />
     <File Path="..\README.md" />
+    <File Path=".editorconfig" />
   </Folder>
   <Project Path="RoyalApps.Community.ExternalApps.WinForms.Demo\RoyalApps.Community.ExternalApps.WinForms.Demo.csproj" />
   <Project Path="RoyalApps.Community.ExternalApps.WinForms\RoyalApps.Community.ExternalApps.WinForms.csproj" />

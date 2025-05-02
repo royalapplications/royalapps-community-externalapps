@@ -7,5 +7,5 @@ namespace RoyalApps.Community.ExternalApps.WinForms.WindowManagement;
 /// </summary>
 public class MissingWindowException : Exception
 {
-    
+
 }

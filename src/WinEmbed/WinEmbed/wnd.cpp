@@ -63,8 +63,8 @@ void WINAPI DoneShl()
 
 ATOM ShellWnd::Register()
 {
-	WNDCLASS wndcls = { 
-		0, StartWindowProc, 0, 0, (HINSTANCE)&__ImageBase, 0, LoadCursor(0, IDC_ARROW), 0, 0, szwndcls 
+	WNDCLASS wndcls = {
+		0, StartWindowProc, 0, 0, (HINSTANCE)&__ImageBase, 0, LoadCursor(0, IDC_ARROW), 0, 0, szwndcls
 	};
 
 	return RegisterClass(&wndcls);
@@ -223,10 +223,10 @@ HWND WINAPI CreateShlWnd(_In_ HWND hWndParent, _In_ HWND hwndExternal, _In_ int 
 {
 	if (ShellWnd* p = new ShellWnd(hwndExternal))
 	{
-		hWndParent = CreateWindowExW(0, ShellWnd::szwndcls, 0, 
-			WS_CHILD|WS_VISIBLE|WS_CLIPCHILDREN|WS_CLIPSIBLINGS, 
+		hWndParent = CreateWindowExW(0, ShellWnd::szwndcls, 0,
+			WS_CHILD|WS_VISIBLE|WS_CLIPCHILDREN|WS_CLIPSIBLINGS,
 			0, 0, nWidth, nHeight, hWndParent, 0, (HINSTANCE)&__ImageBase, p);
-		
+
 		p->Release();
 
 		return hWndParent;
@@ -239,7 +239,7 @@ HWND GetCrossParent(HWND hwnd, _Out_opt_ LPDWORD lpdwProcessId)
 {
 	if (ULONG tid = GetWindowThreadProcessId(hwnd, lpdwProcessId))
 	{
-		do 
+		do
 		{
 			if (tid != GetWindowThreadProcessId(hwnd, 0))
 			{
@@ -304,7 +304,7 @@ HRESULT WINAPI InitShl()
 {
 	dwListRef = 1;
 
-	if (hWinEventHook = SetWinEventHook(EVENT_OBJECT_FOCUS, EVENT_OBJECT_FOCUS, 
+	if (hWinEventHook = SetWinEventHook(EVENT_OBJECT_FOCUS, EVENT_OBJECT_FOCUS,
 		0, WinEventProc, 0, 0, WINEVENT_OUTOFCONTEXT| WINEVENT_SKIPOWNPROCESS  ))
 	{
 		return S_OK;

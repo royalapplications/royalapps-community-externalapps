@@ -16,7 +16,7 @@ public class ApplicationClosedEventArgs : EventArgs
     /// True, if the process exited.
     /// </summary>
     public bool ProcessExited { get; set; }
-    
+
     /// <summary>
     /// The exception which may have caused the application to close.
     /// </summary>
@@ -27,9 +27,9 @@ public class ApplicationClosedEventArgs : EventArgs
     /// </summary>
     public ApplicationClosedEventArgs()
     {
-        
+
     }
-    
+
     /// <summary>
     /// Creates an instance and sets the Exception property.
     /// </summary>

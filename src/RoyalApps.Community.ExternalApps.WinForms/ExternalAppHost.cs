@@ -110,7 +110,7 @@ public class ExternalAppHost : Control
     /// <summary>
     /// Raised when no window with the matching criteria has been found.
     /// </summary>
-    public event EventHandler<QueryWindowEventArgs>? QueryWindow; 
+    public event EventHandler<QueryWindowEventArgs>? QueryWindow;
 
     /// <summary>
     /// Raised when the application's window title has changed.
@@ -127,7 +127,7 @@ public class ExternalAppHost : Control
         SetStyle(ControlStyles.Selectable, true);
         TabStop = true;
     }
-    
+
     /// <summary>
     /// Closes the external application
     /// </summary>
@@ -196,11 +196,11 @@ public class ExternalAppHost : Control
         if (_externalApp == null)
             return;
 
-        ExternalApps.ShowSystemMenu(new HWND(EmbeddedWindowHandle), 
-            ControlHandle, 
+        ExternalApps.ShowSystemMenu(new HWND(EmbeddedWindowHandle),
+            ControlHandle,
             location);
     }
-    
+
     /// <inheritdoc />
     protected override void Dispose(bool disposing)
     {
@@ -230,7 +230,7 @@ public class ExternalAppHost : Control
     }
 
     /// <summary>
-    /// Focuses the external application. 
+    /// Focuses the external application.
     /// </summary>
     /// <param name="force">If true, always bring external application to foreground and focus the window, even if it is not embedded.</param>
     public void FocusApplication(bool force)
@@ -308,7 +308,7 @@ public class ExternalAppHost : Control
     protected virtual void OnQueryWindow(QueryWindowEventArgs e)
     {
     }
-    
+
     /// <summary>
     /// Handles a window title change.
     /// </summary>
@@ -317,7 +317,7 @@ public class ExternalAppHost : Control
     }
 
     /// <summary>
-    /// Handles focusing of the external application. 
+    /// Handles focusing of the external application.
     /// </summary>
     /// <param name="force">If true, always bring external application to foreground and focus the window, even if it is not embedded.</param>
     protected virtual void OnFocusApplication(bool force)
@@ -365,7 +365,7 @@ public class ExternalAppHost : Control
     {
         RaiseApplicationClosed(new ApplicationClosedEventArgs {ProcessExited = true});
     }
-    
+
     private void ExternalApp_QueryWindow(object? sender, QueryWindowEventArgs e)
     {
         RaiseQueryWindow(e);
@@ -409,7 +409,7 @@ public class ExternalAppHost : Control
         OnQueryWindow(e);
         QueryWindow?.Invoke(this, e);
     }
-    
+
     private void RaiseWindowTitleChanged()
     {
         Logger.WithCallerInfo(logger => logger.LogDebug(nameof(RaiseWindowTitleChanged)));

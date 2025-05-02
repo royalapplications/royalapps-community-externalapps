@@ -22,7 +22,7 @@ public static class ControlExtensions
         }
         return control;
     }
-    
+
     /// <summary>
     /// Determine which tab index is at specified location
     /// </summary>
@@ -39,5 +39,4 @@ public static class ControlExtensions
 
         return -1;
     }
-
 }
