@@ -137,12 +137,63 @@ internal sealed class ExternalApp : IDisposable
     {
         if (Process == null || WindowHandle.IsNull)
             return string.Empty;
+
         try
         {
-            var capLength = PInvoke.GetWindowTextLength(WindowHandle);
-            var lpString = default(PWSTR);
-            PInvoke.GetWindowText(WindowHandle, lpString, capLength);
-            return lpString.AsSpan().ToString();
+            var hWnd = WindowHandle;
+
+            // Get text length via WM_GETTEXTLENGTH
+            var length = PInvoke.SendMessage(
+                hWnd,
+                PInvoke.WM_GETTEXTLENGTH,
+                wParam: default,
+                lParam: default
+            );
+
+            if (length == 0)
+            {
+                hWnd = PInvoke.GetWindow(hWnd, GET_WINDOW_CMD.GW_CHILD);
+                length = PInvoke.SendMessage(
+                    hWnd,
+                    PInvoke.WM_GETTEXTLENGTH,
+                    wParam: default,
+                    lParam: default
+                );
+
+                if (length == 0)
+                    return string.Empty;
+            }
+
+            var textLength = (int)length.Value;
+            if (textLength == 0)
+                return string.Empty;
+
+            // Calculate required buffer size (including null terminator)
+            var bufferSize = textLength + 1;
+
+            // Allocate buffer
+            var buffer = bufferSize <= 256
+                ? stackalloc char[bufferSize]
+                : new char[bufferSize];
+
+            unsafe
+            {
+                fixed (char* bufferPtr = buffer)
+                {
+                    // Send WM_GETTEXT message
+                    var result = PInvoke.SendMessage(
+                        hWnd,
+                        PInvoke.WM_GETTEXT,
+                        (nuint)bufferSize,  // Correct conversion to WPARAM
+                        (nint)bufferPtr      // Correct conversion to LPARAM
+                    );
+
+                    var charsCopied = (int)result.Value;
+                    return charsCopied > 0
+                        ? new string(bufferPtr, 0, charsCopied)
+                        : string.Empty;
+                }
+            }
         }
         catch
         {

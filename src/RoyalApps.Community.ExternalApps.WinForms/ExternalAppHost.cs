@@ -115,7 +115,7 @@ public class ExternalAppHost : Control
     /// <summary>
     /// Raised when the application's window title has changed.
     /// </summary>
-    public event EventHandler<EventArgs>? WindowTitleChanged;
+    public event EventHandler<WindowCaptionEventArgs>? WindowTitleChanged;
 
     /// <summary>
     /// Constructor
@@ -312,7 +312,7 @@ public class ExternalAppHost : Control
     /// <summary>
     /// Handles a window title change.
     /// </summary>
-    protected virtual void OnWindowTitleChanged()
+    protected virtual void OnWindowTitleChanged(WindowCaptionEventArgs e)
     {
     }
 
@@ -410,11 +410,12 @@ public class ExternalAppHost : Control
         QueryWindow?.Invoke(this, e);
     }
 
-    private void RaiseWindowTitleChanged()
+    private void RaiseWindowTitleChanged(string caption)
     {
         Logger.WithCallerInfo(logger => logger.LogDebug(nameof(RaiseWindowTitleChanged)));
-        OnWindowTitleChanged();
-        WindowTitleChanged?.Invoke(this, EventArgs.Empty);
+        var e = new WindowCaptionEventArgs(caption);
+        OnWindowTitleChanged(e);
+        WindowTitleChanged?.Invoke(this, e);
     }
 
     private async Task StartAsync(ExternalAppConfiguration configuration, CancellationToken cancellationToken = default)
@@ -518,20 +519,20 @@ public class ExternalAppHost : Control
         if (_externalApp == null)
             return;
 
-        if (_externalApp.WindowHandle != hWnd)
-        {
-            // Logger.WithCallerInfo(logger => logger.LogDebug(
-            //     "WinEventProc: exiting because WindowHandle ({AppWindowHandle}) != hWnd ({WindowHandle})",
-            //     _externalApp.WindowHandle, hWnd));
-            return;
-        }
+        // if (_externalApp.WindowHandle != hWnd)
+        // {
+        //     Logger.WithCallerInfo(logger => logger.LogDebug(
+        //         "WinEventProc: exiting because WindowHandle ({AppWindowHandle}) != hWnd ({WindowHandle})",
+        //         _externalApp.WindowHandle, hWnd));
+        //     return;
+        // }
 
         switch (eventType)
         {
             case PInvoke.EVENT_OBJECT_NAMECHANGE:
-                Logger.WithCallerInfo(logger => logger.LogDebug("WinEventProc: EVENT_OBJECT_NAMECHANGE: {WindowTitle}",
-                    _externalApp.GetWindowTitle()));
-                Invoke(RaiseWindowTitleChanged);
+                var caption = _externalApp.GetWindowTitle();
+                Logger.WithCallerInfo(logger => logger.LogDebug("WinEventProc: EVENT_OBJECT_NAMECHANGE: {WindowTitle}", caption));
+                Invoke(RaiseWindowTitleChanged, caption);
                 break;
         }
     }

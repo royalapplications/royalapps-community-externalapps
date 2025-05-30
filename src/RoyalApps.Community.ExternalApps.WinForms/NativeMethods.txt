@@ -6,6 +6,7 @@ DestroyWindow
 EnumDesktopWindows
 GetClientRect
 GetSystemMenu
+GetWindow
 GetWindowLong
 GetWindowRect
 GetWindowText
@@ -27,6 +28,8 @@ ShowWindow
 UnhookWinEvent
 
 WM_APP
+WM_GETTEXT
+WM_GETTEXTLENGTH
 WM_LBUTTONDOWN
 WM_MDIACTIVATE
 WM_MOUSEACTIVATE
