@@ -653,7 +653,7 @@ internal sealed class ExternalApp : IDisposable
 
             retry++;
 
-            await Task.Delay(100, cancellationToken);
+            await Task.Delay(250, cancellationToken);
         } while (true);
 
         if (success)
