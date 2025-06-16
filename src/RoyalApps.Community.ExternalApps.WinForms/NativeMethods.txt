@@ -4,6 +4,7 @@ BringWindowToTop
 CreateJobObject
 DestroyWindow
 EnumDesktopWindows
+GetClassName
 GetClientRect
 GetSystemMenu
 GetWindow

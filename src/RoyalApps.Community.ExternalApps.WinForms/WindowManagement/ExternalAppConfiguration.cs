@@ -91,6 +91,11 @@ public class ExternalAppConfiguration
     public bool UseExistingProcess { get; set; }
 
     /// <summary>
+    /// Gets or sets the window class name. If specified and found, it will precede the window title match.
+    /// </summary>
+    public string WindowClassName { get; set; } = string.Empty;
+
+    /// <summary>
     /// Gets or sets the window title to match.
     /// </summary>
     public string WindowTitleMatch { get; set; } = string.Empty;
