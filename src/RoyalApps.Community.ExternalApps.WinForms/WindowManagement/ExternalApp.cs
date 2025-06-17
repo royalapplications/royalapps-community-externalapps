@@ -3,11 +3,13 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Management;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Windows.Win32;
 using Windows.Win32.Foundation;
+using Windows.Win32.UI.WindowsAndMessaging;
 using Microsoft.Extensions.Logging;
 using RoyalApps.Community.ExternalApps.WinForms.Extensions;
 
@@ -128,76 +130,42 @@ internal sealed class ExternalApp : IDisposable
         }
     }
 
-    // /// <summary>
-    // /// Tries to the external application's window title.
-    // /// </summary>
-    // /// <returns>A string containing the window title or an empty string, if not found.</returns>
-    // public string GetClassName()
-    // {
-    //     if (Process == null || WindowHandle.IsNull)
-    //         return string.Empty;
-    //
-    //     try
-    //     {
-    //         var hWnd = WindowHandle;
-    //
-    //         // Get text length via WM_GETTEXTLENGTH
-    //         var length = PInvoke.GetClassName(
-    //             hWnd,
-    //             null,
-    //             256
-    //         );
-    //
-    //         if (length == 0)
-    //         {
-    //             hWnd = PInvoke.GetWindow(hWnd, GET_WINDOW_CMD.GW_CHILD);
-    //             length = PInvoke.GetClassName(
-    //                 hWnd,
-    //                 null,
-    //                 256
-    //             );
-    //
-    //             if (length == 0)
-    //                 return string.Empty;
-    //         }
-    //
-    //         var textLength = (int)length.Value;
-    //         if (textLength == 0)
-    //             return string.Empty;
-    //
-    //         // Calculate required buffer size (including null terminator)
-    //         var bufferSize = textLength + 1;
-    //
-    //         // Allocate buffer
-    //         var buffer = bufferSize <= 256
-    //             ? stackalloc char[bufferSize]
-    //             : new char[bufferSize];
-    //
-    //         unsafe
-    //         {
-    //             fixed (char* bufferPtr = buffer)
-    //             {
-    //                 // Send WM_GETTEXT message
-    //                 var result = PInvoke.GetClassName(
-    //                     hWnd,
-    //                     (nint)bufferPtr,
-    //                     (nuint)bufferSize
-    //                 );
-    //
-    //                 var charsCopied = (int)result.Value;
-    //                 return charsCopied > 0
-    //                     ? new string(bufferPtr, 0, charsCopied)
-    //                     : string.Empty;
-    //             }
-    //         }
-    //     }
-    //     catch
-    //     {
-    //         // ignored
-    //     }
-    //
-    //     return string.Empty;
-    // }
+    private string GetClassName(Process? process, HWND hWnd)
+    {
+        if (process == null || hWnd == HWND.Null)
+            return string.Empty;
+
+        try
+        {
+            Span<char> temp = stackalloc char[256];
+
+            // Get text length via WM_GETTEXTLENGTH
+            var length = PInvoke.GetClassName(
+                hWnd,
+                temp
+            );
+
+            if (length == 0)
+            {
+                hWnd = PInvoke.GetWindow(hWnd, GET_WINDOW_CMD.GW_CHILD);
+                length = PInvoke.GetClassName(
+                    hWnd,
+                    temp
+                );
+
+                if (length == 0)
+                    return string.Empty;
+            }
+
+            return temp.Slice(0, length).ToString();
+        }
+        catch
+        {
+            // ignored
+        }
+
+        return string.Empty;
+    }
 
     /// <summary>
     /// Tries to the external application's window title.
@@ -306,7 +274,6 @@ internal sealed class ExternalApp : IDisposable
 
             if (!string.IsNullOrEmpty(Configuration.WindowTitleMatch))
             {
-                await Task.Delay(5000);
                 await Task.Delay(Configuration.MinWaitTime * 1000, cancellationToken);
                 var window = await FindWindowHandleAsync(
                     process,
@@ -557,9 +524,9 @@ internal sealed class ExternalApp : IDisposable
                     continue;
 
                 // class name matches
-                // var foundClassName = GetClassName();
-                // if (foundClassName == className)
-                //     return window;
+                var foundClassName = GetClassName(process, window.WindowHandle);
+                if (foundClassName == className)
+                    return window;
 
                 // title matches
                 if (!window.WindowTitle.Contains(titleMatch))
