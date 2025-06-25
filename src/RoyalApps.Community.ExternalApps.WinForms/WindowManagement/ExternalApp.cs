@@ -304,7 +304,9 @@ internal sealed class ExternalApp : IDisposable
                 }
 
                 process = Process.GetProcessById(window.ProcessId);
-
+                WindowHandle = window.WindowHandle == HWND.Null
+                    ? new HWND(process.MainWindowHandle)
+                    : window.WindowHandle;
             }
 
             if (process == null)
@@ -316,7 +318,6 @@ internal sealed class ExternalApp : IDisposable
             Process = process;
             Process.EnableRaisingEvents = true;
             Process.Exited += AppProcess_Exited;
-            WindowHandle = new HWND(process.MainWindowHandle);
             ApplicationState = ApplicationState.Running;
         }
         catch (OperationCanceledException)
