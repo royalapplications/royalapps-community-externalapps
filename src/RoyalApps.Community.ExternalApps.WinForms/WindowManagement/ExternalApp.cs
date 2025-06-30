@@ -3,7 +3,6 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Management;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -188,7 +187,7 @@ internal sealed class ExternalApp : IDisposable
                 lParam: default
             );
 
-            if (length == 0)
+            if (length == (LRESULT)0)
             {
                 hWnd = PInvoke.GetWindow(hWnd, GET_WINDOW_CMD.GW_CHILD);
                 length = PInvoke.SendMessage(
@@ -198,7 +197,7 @@ internal sealed class ExternalApp : IDisposable
                     lParam: default
                 );
 
-                if (length == 0)
+                if (length == (LRESULT)0)
                     return string.Empty;
             }
 
