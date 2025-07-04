@@ -271,7 +271,8 @@ internal sealed class ExternalApp : IDisposable
                     cancellationToken);
             }
 
-            if (!string.IsNullOrEmpty(Configuration.WindowTitleMatch))
+            if (!string.IsNullOrEmpty(Configuration.WindowTitleMatch) ||
+                !string.IsNullOrEmpty(Configuration.WindowClassName))
             {
                 await Task.Delay(Configuration.MinWaitTime * 1000, cancellationToken);
                 var window = await FindWindowHandleAsync(
@@ -315,6 +316,10 @@ internal sealed class ExternalApp : IDisposable
             }
 
             Process = process;
+
+            if (WindowHandle == HWND.Null && Process.MainWindowHandle != IntPtr.Zero)
+                WindowHandle = new HWND(Process.MainWindowHandle);
+
             Process.EnableRaisingEvents = true;
             Process.Exited += AppProcess_Exited;
             ApplicationState = ApplicationState.Running;
