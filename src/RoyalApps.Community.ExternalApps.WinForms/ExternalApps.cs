@@ -1,14 +1,11 @@
+using RoyalApps.Community.ExternalApps.WinForms.Hosting;
 using System;
-using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
-using System.Runtime.InteropServices;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.UI.WindowsAndMessaging;
 using Microsoft.Extensions.Logging;
-using RoyalApps.Community.ExternalApps.WinForms.Native;
-using RoyalApps.Community.ExternalApps.WinForms.WindowManagement;
 
 namespace RoyalApps.Community.ExternalApps.WinForms;
 
@@ -18,85 +15,68 @@ namespace RoyalApps.Community.ExternalApps.WinForms;
 public static class ExternalApps
 {
     private static readonly ProcessJobTracker ProcessJobTracker = new("ExternalApps");
-    private static bool _isInitialized;
-    private static readonly Api Api = RuntimeInformation.ProcessArchitecture == Architecture.Arm64
-        ? new ApiArm64()
-        : new ApiX64();
+    private static readonly TrackedWindowRegistry TrackedWindowRegistry = new();
 
     /// <summary>
-    /// Must be called when the application host starts.
+    /// Initializes process-tracking services used by external app sessions.
     /// </summary>
+    /// <param name="logger">An optional logger used to record initialization details.</param>
     public static void Initialize(ILogger? logger = null)
     {
-        try
-        {
-            Api.InitShell();
-            _isInitialized = true;
-        }
-        catch (Exception ex)
-        {
-            logger?.LogWarning(
-                ex,
-                "ExternalApps initialization failed. Window embedding may not work");
-        }
+        logger?.LogDebug("ExternalApps.Initialize completed using managed embedding.");
     }
 
     /// <summary>
-    /// Must be called when before the application host is closed.
+    /// Cleans up process-tracking services before the application host shuts down.
     /// </summary>
+    /// <param name="logger">An optional logger used to record cleanup details.</param>
     public static void Cleanup(ILogger? logger = null)
     {
-        try
-        {
-            Api.DoneShell();
-        }
-        catch (Exception ex)
-        {
-            logger?.LogWarning(
-                ex,
-                "ExternalApps cleanup failed");
-        }
+        logger?.LogDebug("ExternalApps.Cleanup completed using managed embedding.");
         ProcessJobTracker.Dispose();
     }
 
-    internal static HWND EmbedWindow(HWND parentWindowHandle, HWND childWindowHandle, Process? process, ILogger logger)
+    internal static void TrackProcess(Process process, ILogger logger)
     {
-        if (!_isInitialized)
-            throw new InvalidOperationException("Cannot call EmbedWindow without calling 'ExternalApps.Initialize()' first.");
-
-        if (!PInvoke.GetClientRect(parentWindowHandle, out var parentWindowClientRect))
-            throw new Win32Exception();
-
-        var containerHandle = Api.CreateShellWnd(
-            parentWindowHandle,
-            childWindowHandle,
-            parentWindowClientRect.right - parentWindowClientRect.left,
-            parentWindowClientRect.bottom - parentWindowClientRect.top);
-
         try
         {
-            if (process != null)
-                ProcessJobTracker.AddProcess(process);
+            ProcessJobTracker.AddProcess(process);
         }
         catch (Exception ex)
         {
+            string processDescription;
+            try
+            {
+                processDescription = !string.IsNullOrWhiteSpace(process.StartInfo.FileName)
+                    ? process.StartInfo.FileName
+                    : process.ProcessName;
+            }
+            catch
+            {
+                processDescription = process.ProcessName;
+            }
+
             logger.LogWarning(
                 ex,
-                "ProcessJobTracker could not add the process {FileName} with the id {Id}",
-                process?.StartInfo.FileName,
-                process?.Id
-                );
+                "ProcessJobTracker could not add the process {ProcessDescription} with the id {Id}",
+                processDescription,
+                process.Id);
         }
-
-        return new HWND(containerHandle);
     }
 
-    internal static HWND DetachWindow(HWND windowHandle)
+    internal static void RegisterTrackedWindow(HWND windowHandle)
     {
-        var newWindowHandle = PInvoke.SendMessage(windowHandle, PInvoke.WM_PARENTNOTIFY, new WPARAM(PInvoke.WM_NCDESTROY), 0);
-        PInvoke.DestroyWindow(windowHandle);
-        return new HWND(newWindowHandle);
+        TrackedWindowRegistry.Register(ToNativeInt(windowHandle));
+    }
 
+    internal static void UnregisterTrackedWindow(HWND windowHandle)
+    {
+        TrackedWindowRegistry.Unregister(ToNativeInt(windowHandle));
+    }
+
+    internal static bool IsTrackedWindow(HWND windowHandle)
+    {
+        return TrackedWindowRegistry.IsTracked(ToNativeInt(windowHandle));
     }
 
     internal static void ShowSystemMenu(HWND originalWindowHandle, HWND controlHandle, Point point)
@@ -123,4 +103,6 @@ public static class ExternalApps
         }
 
     }
+
+    private static unsafe nint ToNativeInt(HWND windowHandle) => (nint)windowHandle.Value;
 }

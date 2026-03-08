@@ -82,6 +82,11 @@ jobs:
       env:
         Configuration: ${{ matrix.configuration }}
 
+    - name: run tests
+      run: dotnet test -c Release src/RoyalApps.Community.ExternalApps.WinForms.Tests/RoyalApps.Community.ExternalApps.WinForms.Tests.csproj --logger trx
+      env:
+        Configuration: ${{ matrix.configuration }}
+
     # Pack nuget package
     - name: dotnet pack
       run: dotnet pack --no-build -c Release src/RoyalApps.Community.ExternalApps.WinForms/RoyalApps.Community.ExternalApps.WinForms.csproj -o .

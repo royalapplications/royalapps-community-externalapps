@@ -11,7 +11,7 @@
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <PackageIcon>RoyalApps_1024.png</PackageIcon>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
-        <Version>1.2.1</Version>
+        <Version>2.0.0-beta.1</Version>
         <Nullable>enable</Nullable>
         <LangVersion>latest</LangVersion>
         <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
@@ -49,22 +49,6 @@
     <ItemGroup>
         <File Include="NativeMethods.txt" />
     </ItemGroup>
-
-    <ItemGroup>
-        <None Include="lib\WinEmbed.x64.dll" Pack="true" PackagePath="runtimes\win-x64\native" />
-        <Content Include="lib\WinEmbed.x64.dll">
-            <Link>%(Filename)%(Extension)</Link>
-            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-        </Content>
-    </ItemGroup>
-
-	<ItemGroup>
-		<None Include="lib\WinEmbed.arm64.dll" Pack="true" PackagePath="runtimes\win-arm64\native" />
-		<Content Include="lib\WinEmbed.arm64.dll">
-			<Link>%(Filename)%(Extension)</Link>
-			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
-		</Content>
-	</ItemGroup>
 
     <ItemGroup>
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />

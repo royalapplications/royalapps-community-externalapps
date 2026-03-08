@@ -1,0 +1,9 @@
+global using RoyalApps.Community.ExternalApps.WinForms;
+global using RoyalApps.Community.ExternalApps.WinForms.Discovery;
+global using RoyalApps.Community.ExternalApps.WinForms.Embedding;
+global using RoyalApps.Community.ExternalApps.WinForms.Events;
+global using RoyalApps.Community.ExternalApps.WinForms.Hosting;
+global using RoyalApps.Community.ExternalApps.WinForms.Interfaces;
+global using RoyalApps.Community.ExternalApps.WinForms.Launching;
+global using RoyalApps.Community.ExternalApps.WinForms.Options;
+global using RoyalApps.Community.ExternalApps.WinForms.Selection;

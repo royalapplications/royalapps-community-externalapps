@@ -1,9 +1,13 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Windows.Forms;
 using Microsoft.Extensions.Logging;
 using RoyalApps.Community.ExternalApps.WinForms.Demo.Extensions;
-using RoyalApps.Community.ExternalApps.WinForms.WindowManagement;
+using RoyalApps.Community.ExternalApps.WinForms.Embedding;
+using RoyalApps.Community.ExternalApps.WinForms.Events;
+using RoyalApps.Community.ExternalApps.WinForms.Options;
+using RoyalApps.Community.ExternalApps.WinForms.Selection;
 
 namespace RoyalApps.Community.ExternalApps.WinForms.Demo;
 
@@ -23,7 +27,7 @@ public partial class FormMain : Form
 
         _logWriterTimer.Tick += (_, _) =>
         {
-            var text = Program.ConsoleOutput.GetStringBuilder().ToString();
+            var text = Program.ConsoleOutput.Snapshot();
             if (text.Length == TextBoxLog.TextLength)
                 return;
             TextBoxLog.Text = text;
@@ -75,10 +79,10 @@ public partial class FormMain : Form
         if (sender is not ExternalAppHost { Parent: TabPage { Parent: TabControl }} externalAppHost)
             return;
 
-        if (externalAppHost.Configuration == null)
+        if (externalAppHost.Options == null)
             return;
 
-        _logger.LogInformation("Starting application: {Command}", externalAppHost.Configuration.Executable);
+        _logger.LogInformation("Starting application: {Command}", externalAppHost.Options.Launch.Executable);
     }
 
     private void ExternalApp_ApplicationClosed(object? sender, EventArgs e)
@@ -94,12 +98,28 @@ public partial class FormMain : Form
 
     private void StripButtonAddLeft_Click(object sender, EventArgs e)
     {
-        AddApplication(TabControlLeft, new ExternalAppConfiguration {Executable = StripTextBoxQuickEmbed.Text});
+        AddApplication(TabControlLeft, new ExternalAppOptions
+        {
+            Launch =
+            {
+                Executable = StripTextBoxQuickEmbed.Text,
+                Arguments = string.IsNullOrWhiteSpace(StripTextBoxArguments.Text) ? null : StripTextBoxArguments.Text,
+                WorkingDirectory = string.IsNullOrWhiteSpace(StripTextBoxWorkingDirectory.Text) ? null : StripTextBoxWorkingDirectory.Text,
+            },
+        });
     }
 
     private void StripButtonAddRight_Click(object sender, EventArgs e)
     {
-        AddApplication(TabControlRight, new ExternalAppConfiguration {Executable = StripTextBoxQuickEmbed.Text});
+        AddApplication(TabControlRight, new ExternalAppOptions
+        {
+            Launch =
+            {
+                Executable = StripTextBoxQuickEmbed.Text,
+                Arguments = string.IsNullOrWhiteSpace(StripTextBoxArguments.Text) ? null : StripTextBoxArguments.Text,
+                WorkingDirectory = string.IsNullOrWhiteSpace(StripTextBoxWorkingDirectory.Text) ? null : StripTextBoxWorkingDirectory.Text,
+            },
+        });
     }
 
     private void MenuItemControl_Click(object? sender, EventArgs e)
@@ -116,27 +136,33 @@ public partial class FormMain : Form
         StripDropDownButtonAdd.ShowDropDown();
     }
 
-    private void AddApplication(TabControl tabControl, ExternalAppConfiguration externalAppConfiguration)
+    private void AddApplication(TabControl tabControl, ExternalAppOptions options)
     {
-        if (string.IsNullOrWhiteSpace(externalAppConfiguration.Executable))
+        if (string.IsNullOrWhiteSpace(options.Launch.Executable))
         {
             _logger.LogWarning("No executable specified");
             return;
         }
-        if (!File.Exists(externalAppConfiguration.Executable))
+
+        var expandedExecutable = Environment.ExpandEnvironmentVariables(options.Launch.Executable);
+        var hasDirectoryComponent = expandedExecutable.IndexOfAny(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }) >= 0;
+        if (hasDirectoryComponent && !File.Exists(expandedExecutable))
         {
-            _logger.LogError("Executable not found: {Command}", externalAppConfiguration.Executable);
+            _logger.LogError("Executable not found: {Command}", expandedExecutable);
             return;
         }
 
-        Program.ConsoleOutput.GetStringBuilder().Clear();
+        Program.ConsoleOutput.Clear();
 
-        externalAppConfiguration.EmbedMethod = MenuItemControl.Checked
+        options.Embedding.Mode = MenuItemControl.Checked
             ? EmbedMethod.Control
             : EmbedMethod.Window;
+        options.Embedding.StartEmbedded = MenuItemStartEmbedded.Checked;
+        options.Embedding.IncludeWindowChromeDimensions = MenuItemIncludeWindowChromeDimensions.Checked;
+        options.Launch.StartHidden = MenuItemStartHidden.Checked;
+        options.Launch.KillOnClose = MenuItemKillOnClose.Checked;
 
-        var fileInfo = new FileInfo(externalAppConfiguration.Executable!);
-        var caption = fileInfo.Name;
+        var caption = Path.GetFileName(expandedExecutable);
 
         var tabPage = new TabPage(caption);
         var externalApp = new ExternalAppHost
@@ -147,12 +173,68 @@ public partial class FormMain : Form
         };
         externalApp.ApplicationStarted += ExternalApp_ApplicationStarted;
         externalApp.ApplicationClosed += ExternalApp_ApplicationClosed;
+        externalApp.WindowSelectionRequested += ExternalApp_WindowSelectionRequested;
 
         tabControl.TabPages.Add(tabPage);
         tabControl.SelectedTab = tabPage;
 
-        _logger.LogInformation("Starting application: {Command}", externalAppConfiguration.Executable);
-        externalApp.Start(externalAppConfiguration);
+        _logger.LogInformation("Starting application: {Command}", options.Launch.Executable);
+        externalApp.Start(options);
+    }
+
+    private void ExternalApp_WindowSelectionRequested(object? sender, WindowSelectionRequestEventArgs e)
+    {
+        var topLevelCandidates = e.Candidates
+            .Where(candidate => candidate.IsTopLevel)
+            .ToList();
+        var newlyDiscoveredTopLevelCandidates = e.NewlyDiscoveredCandidates
+            .Where(candidate => candidate.IsTopLevel)
+            .ToList();
+
+        ExternalWindowCandidate? selectedCandidate = null;
+        if (e.StartedProcessId is int startedProcessId)
+        {
+            selectedCandidate = newlyDiscoveredTopLevelCandidates.FirstOrDefault(candidate => candidate.ProcessId == startedProcessId)
+                ?? topLevelCandidates.FirstOrDefault(candidate => candidate.ProcessId == startedProcessId);
+        }
+
+        if (selectedCandidate == null && !string.IsNullOrWhiteSpace(e.RequestedExecutablePath))
+        {
+            var requestedFileName = Path.GetFileName(e.RequestedExecutablePath);
+            if (!string.IsNullOrWhiteSpace(requestedFileName))
+            {
+                selectedCandidate = newlyDiscoveredTopLevelCandidates.FirstOrDefault(candidate =>
+                                       string.Equals(Path.GetFileName(candidate.ExecutablePath), requestedFileName, StringComparison.OrdinalIgnoreCase))
+                                   ?? topLevelCandidates.FirstOrDefault(candidate =>
+                                       string.Equals(Path.GetFileName(candidate.ExecutablePath), requestedFileName, StringComparison.OrdinalIgnoreCase));
+            }
+        }
+
+        if (selectedCandidate == null && newlyDiscoveredTopLevelCandidates.Count == 1)
+            selectedCandidate = newlyDiscoveredTopLevelCandidates[0];
+
+        if (selectedCandidate == null && topLevelCandidates.Count == 1)
+            selectedCandidate = topLevelCandidates[0];
+
+        if (selectedCandidate is { PrefersExternalHosting: true })
+        {
+            _logger.LogWarning(
+                "Selected window '{WindowTitle}' may not reparent cleanly. {Warning}",
+                selectedCandidate.WindowTitle,
+                selectedCandidate.EmbeddingCompatibilityWarning);
+        }
+
+        if (selectedCandidate != null)
+        {
+            _logger.LogDebug(
+                "Selecting candidate '{WindowTitle}' (pid {ProcessId}, hwnd {WindowHandle}) from {CandidateCount} candidates, {NewCandidateCount} newly discovered",
+                selectedCandidate.WindowTitle,
+                selectedCandidate.ProcessId,
+                selectedCandidate.WindowHandle,
+                topLevelCandidates.Count,
+                newlyDiscoveredTopLevelCandidates.Count);
+            e.SelectWindow(selectedCandidate);
+        }
     }
 
     private void TabControl_MouseUp(object? sender, MouseEventArgs e)

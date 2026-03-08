@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using System.Windows.Forms;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -9,7 +8,7 @@ namespace RoyalApps.Community.ExternalApps.WinForms.Demo;
 
 internal static class Program
 {
-    internal static readonly StringWriter ConsoleOutput = new();
+    internal static readonly ThreadSafeStringWriter ConsoleOutput = new();
 
     /// <summary>
     ///  The main entry point for the application.

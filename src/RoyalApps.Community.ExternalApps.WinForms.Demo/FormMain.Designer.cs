@@ -48,12 +48,20 @@ partial class FormMain
             this.toolStrip1 = new System.Windows.Forms.ToolStrip();
             this.StripLabelQuickEmbed = new System.Windows.Forms.ToolStripLabel();
             this.StripTextBoxQuickEmbed = new System.Windows.Forms.ToolStripTextBox();
+            this.StripLabelArguments = new System.Windows.Forms.ToolStripLabel();
+            this.StripTextBoxArguments = new System.Windows.Forms.ToolStripTextBox();
+            this.StripLabelWorkingDirectory = new System.Windows.Forms.ToolStripLabel();
+            this.StripTextBoxWorkingDirectory = new System.Windows.Forms.ToolStripTextBox();
             this.StripDropDownButtonAdd = new System.Windows.Forms.ToolStripDropDownButton();
             this.StripButtonAddLeft = new System.Windows.Forms.ToolStripButton();
             this.StripButtonAddRight = new System.Windows.Forms.ToolStripButton();
             this.toolStripSeparator1 = new System.Windows.Forms.ToolStripSeparator();
             this.MenuItemControl = new System.Windows.Forms.ToolStripMenuItem();
             this.MenuItemWindow = new System.Windows.Forms.ToolStripMenuItem();
+            this.MenuItemStartEmbedded = new System.Windows.Forms.ToolStripMenuItem();
+            this.MenuItemStartHidden = new System.Windows.Forms.ToolStripMenuItem();
+            this.MenuItemKillOnClose = new System.Windows.Forms.ToolStripMenuItem();
+            this.MenuItemIncludeWindowChromeDimensions = new System.Windows.Forms.ToolStripMenuItem();
             this.TextBoxLog = new System.Windows.Forms.TextBox();
             this.StatusStrip = new System.Windows.Forms.StatusStrip();
             this.StatusLabel = new System.Windows.Forms.ToolStripStatusLabel();
@@ -230,6 +238,10 @@ partial class FormMain
             this.toolStrip1.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.StripLabelQuickEmbed,
             this.StripTextBoxQuickEmbed,
+            this.StripLabelArguments,
+            this.StripTextBoxArguments,
+            this.StripLabelWorkingDirectory,
+            this.StripTextBoxWorkingDirectory,
             this.StripDropDownButtonAdd});
             this.toolStrip1.Location = new System.Drawing.Point(0, 0);
             this.toolStrip1.Name = "toolStrip1";
@@ -250,6 +262,28 @@ partial class FormMain
             this.StripTextBoxQuickEmbed.Size = new System.Drawing.Size(429, 42);
             this.StripTextBoxQuickEmbed.Text = "c:\\windows\\System32\\cmd.exe";
             //
+            // StripLabelArguments
+            //
+            this.StripLabelArguments.Name = "StripLabelArguments";
+            this.StripLabelArguments.Size = new System.Drawing.Size(121, 36);
+            this.StripLabelArguments.Text = "&Arguments:";
+            //
+            // StripTextBoxArguments
+            //
+            this.StripTextBoxArguments.Name = "StripTextBoxArguments";
+            this.StripTextBoxArguments.Size = new System.Drawing.Size(260, 42);
+            //
+            // StripLabelWorkingDirectory
+            //
+            this.StripLabelWorkingDirectory.Name = "StripLabelWorkingDirectory";
+            this.StripLabelWorkingDirectory.Size = new System.Drawing.Size(203, 36);
+            this.StripLabelWorkingDirectory.Text = "&Working Directory:";
+            //
+            // StripTextBoxWorkingDirectory
+            //
+            this.StripTextBoxWorkingDirectory.Name = "StripTextBoxWorkingDirectory";
+            this.StripTextBoxWorkingDirectory.Size = new System.Drawing.Size(320, 42);
+            //
             // StripDropDownButtonAdd
             //
             this.StripDropDownButtonAdd.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Text;
@@ -258,7 +292,11 @@ partial class FormMain
             this.StripButtonAddRight,
             this.toolStripSeparator1,
             this.MenuItemControl,
-            this.MenuItemWindow});
+            this.MenuItemWindow,
+            this.MenuItemStartEmbedded,
+            this.MenuItemStartHidden,
+            this.MenuItemKillOnClose,
+            this.MenuItemIncludeWindowChromeDimensions});
             this.StripDropDownButtonAdd.Image = ((System.Drawing.Image)(resources.GetObject("StripDropDownButtonAdd.Image")));
             this.StripDropDownButtonAdd.ImageTransparentColor = System.Drawing.Color.Magenta;
             this.StripDropDownButtonAdd.Name = "StripDropDownButtonAdd";
@@ -304,6 +342,40 @@ partial class FormMain
             this.MenuItemWindow.Size = new System.Drawing.Size(412, 44);
             this.MenuItemWindow.Text = "Embed Method: &Window";
             this.MenuItemWindow.Click += new System.EventHandler(this.MenuItemWindow_Click);
+            //
+            // MenuItemStartEmbedded
+            //
+            this.MenuItemStartEmbedded.Checked = true;
+            this.MenuItemStartEmbedded.CheckOnClick = true;
+            this.MenuItemStartEmbedded.CheckState = System.Windows.Forms.CheckState.Checked;
+            this.MenuItemStartEmbedded.Name = "MenuItemStartEmbedded";
+            this.MenuItemStartEmbedded.Size = new System.Drawing.Size(412, 44);
+            this.MenuItemStartEmbedded.Text = "Start &Embedded";
+            //
+            // MenuItemStartHidden
+            //
+            this.MenuItemStartHidden.Checked = true;
+            this.MenuItemStartHidden.CheckOnClick = true;
+            this.MenuItemStartHidden.CheckState = System.Windows.Forms.CheckState.Checked;
+            this.MenuItemStartHidden.Name = "MenuItemStartHidden";
+            this.MenuItemStartHidden.Size = new System.Drawing.Size(412, 44);
+            this.MenuItemStartHidden.Text = "Start &Hidden";
+            //
+            // MenuItemKillOnClose
+            //
+            this.MenuItemKillOnClose.CheckOnClick = true;
+            this.MenuItemKillOnClose.Name = "MenuItemKillOnClose";
+            this.MenuItemKillOnClose.Size = new System.Drawing.Size(412, 44);
+            this.MenuItemKillOnClose.Text = "&Kill On Close";
+            //
+            // MenuItemIncludeWindowChromeDimensions
+            //
+            this.MenuItemIncludeWindowChromeDimensions.Checked = true;
+            this.MenuItemIncludeWindowChromeDimensions.CheckOnClick = true;
+            this.MenuItemIncludeWindowChromeDimensions.CheckState = System.Windows.Forms.CheckState.Checked;
+            this.MenuItemIncludeWindowChromeDimensions.Name = "MenuItemIncludeWindowChromeDimensions";
+            this.MenuItemIncludeWindowChromeDimensions.Size = new System.Drawing.Size(412, 44);
+            this.MenuItemIncludeWindowChromeDimensions.Text = "Include Window &Chrome";
             //
             // TextBoxLog
             //
@@ -386,6 +458,10 @@ partial class FormMain
     private System.Windows.Forms.ToolStripButton StripButtonAddLeft;
 
     private System.Windows.Forms.ToolStripTextBox StripTextBoxQuickEmbed;
+    private System.Windows.Forms.ToolStripLabel StripLabelArguments;
+    private System.Windows.Forms.ToolStripTextBox StripTextBoxArguments;
+    private System.Windows.Forms.ToolStripLabel StripLabelWorkingDirectory;
+    private System.Windows.Forms.ToolStripTextBox StripTextBoxWorkingDirectory;
 
     private System.Windows.Forms.ToolStripLabel StripLabelQuickEmbed;
 
@@ -409,4 +485,8 @@ partial class FormMain
     private System.Windows.Forms.TabPage tabPage1;
     private ToolStripMenuItem MenuItemDetach;
     private ToolStripMenuItem MenuItemWindow;
+    private ToolStripMenuItem MenuItemStartEmbedded;
+    private ToolStripMenuItem MenuItemStartHidden;
+    private ToolStripMenuItem MenuItemKillOnClose;
+    private ToolStripMenuItem MenuItemIncludeWindowChromeDimensions;
 }

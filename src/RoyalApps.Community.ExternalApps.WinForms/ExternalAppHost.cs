@@ -1,24 +1,23 @@
-using RoyalApps.Community.ExternalApps.WinForms.Extensions;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
-using RoyalApps.Community.ExternalApps.WinForms.WindowManagement;
+using RoyalApps.Community.ExternalApps.WinForms.Embedding;
+using RoyalApps.Community.ExternalApps.WinForms.Events;
+using RoyalApps.Community.ExternalApps.WinForms.Hosting;
+using RoyalApps.Community.ExternalApps.WinForms.Interfaces;
+using RoyalApps.Community.ExternalApps.WinForms.Options;
+using RoyalApps.Community.ExternalApps.WinForms.Selection;
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using RoyalApps.Community.ExternalApps.WinForms.Extensions;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.Graphics.Gdi;
-using Windows.Win32.Storage.Xps;
-using Windows.Win32.UI.Accessibility;
 using Windows.Win32.UI.WindowsAndMessaging;
-using System.ComponentModel;
-// ReSharper disable CommentTypo
-// ReSharper disable StringLiteralTypo
 
 namespace RoyalApps.Community.ExternalApps.WinForms;
 
@@ -27,366 +26,422 @@ namespace RoyalApps.Community.ExternalApps.WinForms;
 /// </summary>
 public class ExternalAppHost : Control
 {
-    private readonly List<IntPtr> _winEventHooks = new();
-
-    // ReSharper disable once CollectionNeverQueried.Local
-    private readonly List<WINEVENTPROC> _winEventProcedures = new();
+    private readonly IExternalAppHostSessionCoordinator _sessionCoordinator;
+    private readonly ExternalAppHostUiDispatcher _uiDispatcher;
+    private readonly WindowHookManager _windowHookManager;
 
     private bool IsLeftMouseButtonDown => MouseButtons.HasFlag(MouseButtons.Left);
 
-    /// <summary>
-    /// The Handle property as HWND.
-    /// </summary>
-    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     internal HWND ControlHandle { get; private set; }
 
-    private ExternalApp? _externalApp;
-    private ILogger? _logger;
-
     /// <summary>
-    /// Gets or sets the <see cref="ILoggerFactory" /> used to create instances of <see cref="ILogger" />.
-    /// Defaults to <see cref="NullLoggerFactory" />.
+    /// Gets or sets the logger factory used to create host loggers.
     /// </summary>
-    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
     public ILoggerFactory LoggerFactory { get; set; }
 
     /// <summary>
-    /// Gets the logger from the configured <see cref="LoggerFactory"/>.
+    /// Gets the logger instance used by the host.
     /// </summary>
     protected ILogger Logger
     {
         get
         {
-            _logger ??= LoggerFactory.CreateLogger<ExternalAppHost>();
-            return _logger;
+            field ??= LoggerFactory.CreateLogger<ExternalAppHost>();
+            return field;
         }
     }
 
     /// <summary>
-    /// Gets the original window handle of the embedded window.
+    /// Gets the handle of the currently tracked external window, or <see cref="IntPtr.Zero"/> when no window is attached.
     /// </summary>
-    public IntPtr EmbeddedWindowHandle
-    {
-        get
-        {
-            if (_externalApp != null)
-                return _externalApp.Configuration.EmbedMethod == EmbedMethod.Window
-                    ? _externalApp.OriginalWindowHandle
-                    : _externalApp.WindowHandle;
-            return IntPtr.Zero;
-        }
-    }
+    public IntPtr EmbeddedWindowHandle => _sessionCoordinator.WindowHandle;
 
     /// <summary>
-    /// The configuration of the external application to embed.
+    /// Gets the options used by the current session, or <see langword="null"/> when no session is active.
     /// </summary>
-    public ExternalAppConfiguration? Configuration => _externalApp?.Configuration;
+    public ExternalAppOptions? Options => _sessionCoordinator.Options;
 
     /// <summary>
-    /// True if an external application window is currently embedded.
+    /// Gets how the current external window is attached to the host.
     /// </summary>
-    public bool IsEmbedded => _externalApp?.IsEmbedded ?? false;
+    public AttachmentState AttachmentState => _sessionCoordinator.AttachmentState;
 
     /// <summary>
-    /// Provides access to the actual process object of the embedded window.
+    /// Gets a value indicating whether the current window is embedded in the host control.
     /// </summary>
-    public Process? Process => _externalApp?.Process;
+    public bool IsEmbedded => _sessionCoordinator.IsEmbedded;
 
     /// <summary>
-    /// Raised after the application has been activated.
+    /// Gets the tracked process for the current session, or <see langword="null"/> when no process is attached.
+    /// </summary>
+    public Process? Process => _sessionCoordinator.Process;
+
+    /// <summary>
+    /// Occurs when the embedded application receives focus.
     /// </summary>
     public event EventHandler<EventArgs>? ApplicationActivated;
 
     /// <summary>
-    /// Raised after the application has been closed.
+    /// Occurs when the tracked application closes or the session terminates with an error.
     /// </summary>
     public event EventHandler<ApplicationClosedEventArgs>? ApplicationClosed;
 
     /// <summary>
-    /// Raised after the application has been started.
+    /// Occurs after the application has started and any initial embedding work has completed.
     /// </summary>
     public event EventHandler<EventArgs>? ApplicationStarted;
 
     /// <summary>
-    /// Raised when no window with the matching criteria has been found.
+    /// Occurs while candidate windows are being discovered and allows the consumer to choose the window to embed.
     /// </summary>
-    public event EventHandler<QueryWindowEventArgs>? QueryWindow;
+    public event EventHandler<WindowSelectionRequestEventArgs>? WindowSelectionRequested;
 
     /// <summary>
-    /// Raised when the application's window title has changed.
+    /// Occurs when the tracked window caption changes.
     /// </summary>
     public event EventHandler<WindowCaptionEventArgs>? WindowTitleChanged;
 
     /// <summary>
-    /// Constructor
+    /// Initializes a new instance of the <see cref="ExternalAppHost"/> class.
     /// </summary>
+    /// <param name="loggerFactory">The logger factory used for host and session logging. When <see langword="null"/>, <see cref="NullLoggerFactory.Instance"/> is used.</param>
     public ExternalAppHost(ILoggerFactory? loggerFactory = null)
     {
         LoggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
+        _uiDispatcher = new ExternalAppHostUiDispatcher(this);
+        var hostLogger = LoggerFactory.CreateLogger<ExternalAppHost>();
+        _sessionCoordinator = new ExternalAppHostSessionCoordinator(() => LoggerFactory, hostLogger);
+        _sessionCoordinator.SessionClosed += SessionCoordinator_SessionClosed;
+        _windowHookManager = new WindowHookManager(hostLogger);
+        SetStyle(ControlStyles.ContainerControl, false);
+        SetStyle(ControlStyles.Selectable, true);
+        TabStop = true;
+    }
+
+    internal ExternalAppHost(
+        IExternalAppHostSessionCoordinator sessionCoordinator,
+        ILoggerFactory? loggerFactory = null,
+        WindowHookManager? windowHookManager = null)
+    {
+        _sessionCoordinator = sessionCoordinator ?? throw new ArgumentNullException(nameof(sessionCoordinator));
+        LoggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
+        _uiDispatcher = new ExternalAppHostUiDispatcher(this);
+        _windowHookManager = windowHookManager ?? new WindowHookManager(LoggerFactory.CreateLogger<ExternalAppHost>());
+        _sessionCoordinator.SessionClosed += SessionCoordinator_SessionClosed;
         SetStyle(ControlStyles.ContainerControl, false);
         SetStyle(ControlStyles.Selectable, true);
         TabStop = true;
     }
 
     /// <summary>
-    /// Closes the external application
+    /// Requests that the tracked application is closed.
     /// </summary>
-    public void CloseApplication()
-    {
-        _externalApp?.CloseApplication();
-    }
+    /// <remarks>
+    /// Depending on the application, this may show confirmation dialogs. If <see cref="ExternalAppLaunchOptions.KillOnClose"/> is enabled,
+    /// the process is terminated when graceful shutdown fails.
+    /// </remarks>
+    public void CloseApplication() => _sessionCoordinator.CloseApplication();
 
     /// <summary>
-    /// Detaches the application.
+    /// Detaches the tracked application window from the host control.
     /// </summary>
     public void DetachApplication()
     {
-        _externalApp?.DetachApplication();
+        _sessionCoordinator.DetachApplication();
         SetWindowPosition();
     }
 
     /// <summary>
-    /// Embeds the application.
+    /// Re-embeds a previously detached application window.
     /// </summary>
     public void EmbedApplication()
     {
-        if (_externalApp is null)
+        if (!_sessionCoordinator.HasWindow)
             return;
 
-        var taskFactory = new TaskFactory();
-        taskFactory.StartNew(() => _externalApp.EmbedAsync(this, CancellationToken.None), TaskCreationOptions.LongRunning);
+        _ = Task.Run(() => EmbedApplicationAsync(CancellationToken.None));
     }
 
     /// <summary>
-    /// Embeds the application.
+    /// Starts a new external application session with the specified options.
     /// </summary>
-    private async Task EmbedApplicationAsync(CancellationToken cancellationToken = default)
-    {
-        if (_externalApp is null or {HasWindow: false})
-        {
-            // process not found or application has been closed
-            throw new MissingWindowException();
-        }
-
-        await _externalApp.EmbedAsync(this, cancellationToken);
-
-        Invoke(() =>
-        {
-            SetWindowPosition();
-            FocusApplication(false);
-        });
-    }
+    /// <param name="options">The runtime options that control launch, selection, and embedding behavior.</param>
+    /// <remarks>
+    /// This method schedules the startup workflow on a background task and returns immediately. Subscribe to
+    /// <see cref="ApplicationStarted"/>, <see cref="ApplicationClosed"/>, and <see cref="WindowSelectionRequested"/> to observe progress.
+    /// </remarks>
+    public void Start(ExternalAppOptions options) => _ = Task.Run(() => StartAsync(options));
 
     /// <summary>
-    /// Starts a new external application.
+    /// Displays the system menu of the tracked window at the specified control-relative location.
     /// </summary>
-    /// <param name="configuration">The <see cref="ExternalAppConfiguration"/> to apply.</param>
-    public void Start(ExternalAppConfiguration configuration)
-    {
-        var taskFactory = new TaskFactory();
-        taskFactory.StartNew(() => StartAsync(configuration), TaskCreationOptions.LongRunning);
-    }
-
-    /// <summary>
-    /// Shows the system menu of the embedded app.
-    /// </summary>
-    /// <param name="location">The location the menu should appear.</param>
+    /// <param name="location">The location, in control coordinates, where the menu should be shown.</param>
     public void ShowSystemMenu(Point location)
     {
-        if (_externalApp == null)
+        if (!_sessionCoordinator.HasWindow)
             return;
 
-        ExternalApps.ShowSystemMenu(new HWND(EmbeddedWindowHandle),
-            ControlHandle,
-            location);
+        ExternalApps.ShowSystemMenu(_sessionCoordinator.WindowHandle, ControlHandle, PointToScreen(location));
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    /// Transfers focus to the tracked application.
+    /// </summary>
+    /// <param name="force"><see langword="true"/> to focus even when the window is detached; otherwise, focus is applied only while embedded.</param>
+    public void FocusApplication(bool force) => OnFocusApplication(force);
+
+    /// <summary>
+    /// Captures a bitmap of the currently tracked window.
+    /// </summary>
+    /// <returns>A bitmap of the client area, or <see langword="null"/> when no valid window is available.</returns>
+    public Bitmap? GetWindowScreenshot()
+    {
+        if (!_sessionCoordinator.HasWindow)
+            return null;
+
+        PInvoke.GetWindowRect(_sessionCoordinator.WindowHandle, out var rect);
+        if (rect.right == 0 || rect.bottom == 0)
+            return null;
+
+        var bmp = new Bitmap(rect.right, rect.bottom, PixelFormat.Format32bppArgb);
+        using var gfxBmp = Graphics.FromImage(bmp);
+        var hdcBitmap = gfxBmp.GetHdc();
+        var hdc = new HDC(hdcBitmap);
+
+        PInvoke.PrintWindow(
+            _sessionCoordinator.WindowHandle,
+            hdc,
+            Windows.Win32.Storage.Xps.PRINT_WINDOW_FLAGS.PW_CLIENTONLY);
+
+        gfxBmp.ReleaseHdc(hdcBitmap);
+        return bmp;
+    }
+
+    /// <summary>
+    /// Maximizes the tracked application window.
+    /// </summary>
+    public void MaximizeApplication()
+    {
+        if (!_sessionCoordinator.HasWindow)
+            return;
+
+        PInvoke.ShowWindow(_sessionCoordinator.WindowHandle, SHOW_WINDOW_CMD.SW_SHOWMAXIMIZED);
+    }
+
+    /// <summary>
+    /// Moves and resizes the tracked application window to the specified bounds.
+    /// </summary>
+    /// <param name="rectangle">The target bounds, in host coordinates when embedded or screen coordinates when detached.</param>
+    public void SetWindowPosition(Rectangle rectangle) => _sessionCoordinator.SetWindowPosition(rectangle);
+
+    /// <summary>
+    /// Raises the <see cref="ApplicationActivated"/> event.
+    /// </summary>
+    protected virtual void OnApplicationActivated() { }
+
+    /// <summary>
+    /// Raises the <see cref="ApplicationClosed"/> event.
+    /// </summary>
+    protected virtual void OnApplicationClosed() { }
+
+    /// <summary>
+    /// Raises the <see cref="ApplicationStarted"/> event.
+    /// </summary>
+    protected virtual void OnApplicationStarted() { }
+
+    /// <summary>
+    /// Raises the <see cref="WindowSelectionRequested"/> event.
+    /// </summary>
+    /// <param name="e">The selection request that contains the current candidate windows.</param>
+    protected virtual void OnWindowSelectionRequested(WindowSelectionRequestEventArgs e) { }
+
+    /// <summary>
+    /// Raises the <see cref="WindowTitleChanged"/> event.
+    /// </summary>
+    /// <param name="e">The event arguments that contain the new caption.</param>
+    protected virtual void OnWindowTitleChanged(WindowCaptionEventArgs e) { }
+
+    /// <summary>
+    /// Focuses the host and the tracked application window.
+    /// </summary>
+    /// <param name="force"><see langword="true"/> to focus detached windows as well; otherwise only embedded windows are focused.</param>
+    protected virtual void OnFocusApplication(bool force)
+    {
+        if (!_sessionCoordinator.HasWindow)
+            return;
+
+        if (!_sessionCoordinator.IsEmbedded && !force)
+            return;
+
+        _uiDispatcher.InvokeIfRequired(() => Focus());
+        _sessionCoordinator.FocusApplication();
+    }
+
+    /// <summary>
+    /// Releases managed and unmanaged resources used by the host.
+    /// </summary>
+    /// <param name="disposing"><see langword="true"/> to dispose managed state; otherwise only unmanaged cleanup is performed.</param>
     protected override void Dispose(bool disposing)
     {
         if (disposing)
         {
-            if (_externalApp != null)
-            {
-                _externalApp.ProcessExited -= ExternalApp_ProcessExited;
-                _externalApp.QueryWindow -= ExternalApp_QueryWindow;
-                _externalApp.Dispose();
-                _externalApp = null;
-            }
-
-            _winEventHooks.ForEach(delegate(IntPtr hook) { PInvoke.UnhookWinEvent(new HWINEVENTHOOK(hook)); });
-            _winEventHooks.Clear();
-            _winEventProcedures.Clear();
+            _sessionCoordinator.SessionClosed -= SessionCoordinator_SessionClosed;
+            _sessionCoordinator.Dispose();
+            _windowHookManager.Dispose();
         }
 
         base.Dispose(disposing);
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    /// Captures the created control handle for native embedding operations.
+    /// </summary>
+    /// <param name="e">The event arguments.</param>
     protected override void OnHandleCreated(EventArgs e)
     {
         base.OnHandleCreated(e);
-        ControlHandle = new(Handle);
+        ControlHandle = new HWND(Handle);
     }
 
     /// <summary>
-    /// Focuses the external application.
+    /// Repositions the tracked window when the host control changes size.
     /// </summary>
-    /// <param name="force">If true, always bring external application to foreground and focus the window, even if it is not embedded.</param>
-    public void FocusApplication(bool force)
-    {
-        OnFocusApplication(force);
-    }
-
-    /// <summary>
-    /// Creates a screenshot of the external application's window.
-    /// </summary>
-    /// <returns>The screenshot <see cref="Bitmap"/>.</returns>
-    public Bitmap? GetWindowScreenshot()
-    {
-        if (_externalApp is null or {HasWindow: false})
-            return null;
-
-        PInvoke.GetWindowRect(_externalApp.WindowHandle, out var rect);
-
-        if (rect.right == 0 || rect.bottom == 0)
-            return null;
-
-        var bmp = new Bitmap(rect.right, rect.bottom, PixelFormat.Format32bppArgb);
-        var gfxBmp = Graphics.FromImage(bmp);
-        var hdcBitmap = gfxBmp.GetHdc();
-        var hdc = new HDC(hdcBitmap);
-
-        PInvoke.PrintWindow(_externalApp.WindowHandle, hdc, PRINT_WINDOW_FLAGS.PW_CLIENTONLY);
-
-        gfxBmp.ReleaseHdc(hdcBitmap);
-        gfxBmp.Dispose();
-
-        return bmp;
-    }
-
-    /// <summary>
-    /// Maximizes the external application.
-    /// </summary>
-    public void MaximizeApplication()
-    {
-        if (_externalApp is not {HasWindow: true})
-            return;
-
-        PInvoke.ShowWindow(_externalApp.WindowHandle, SHOW_WINDOW_CMD.SW_SHOWMAXIMIZED);
-    }
-
-    /// <summary>
-    /// Sets the external application's window position.
-    /// </summary>
-    /// <param name="rectangle">A <see cref="Rectangle"/> describing the desired position.</param>
-    public void SetWindowPosition(Rectangle rectangle)
-    {
-        _externalApp?.SetWindowPosition(rectangle.X, rectangle.Y, rectangle.Width, rectangle.Height);
-    }
-
-    /// <summary>
-    /// </summary>
-    protected virtual void OnApplicationActivated()
-    {
-    }
-
-    /// <summary>
-    /// </summary>
-    protected virtual void OnApplicationClosed()
-    {
-    }
-
-    /// <summary>
-    /// </summary>
-    protected virtual void OnApplicationStarted()
-    {
-    }
-
-    /// <summary>
-    /// </summary>
-    protected virtual void OnQueryWindow(QueryWindowEventArgs e)
-    {
-    }
-
-    /// <summary>
-    /// Handles a window title change.
-    /// </summary>
-    protected virtual void OnWindowTitleChanged(WindowCaptionEventArgs e)
-    {
-    }
-
-    /// <summary>
-    /// Handles focusing of the external application.
-    /// </summary>
-    /// <param name="force">If true, always bring external application to foreground and focus the window, even if it is not embedded.</param>
-    protected virtual void OnFocusApplication(bool force)
-    {
-        if (_externalApp is null or {HasWindow: false})
-            return;
-
-        if (!_externalApp.IsEmbedded && !force)
-            return;
-
-        Invoke(Focus);
-
-        _externalApp.FocusApplication();
-    }
-
-    /// <inheritdoc />
+    /// <param name="e">The event arguments.</param>
     protected override void OnResize(EventArgs e)
     {
         base.OnResize(e);
         SetWindowPosition();
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    /// Processes focus-related window messages to keep the tracked application synchronized with the host.
+    /// </summary>
+    /// <param name="m">The current Windows message.</param>
     protected override void WndProc(ref Message m)
     {
-        switch ((uint) m.Msg)
+        switch ((uint)m.Msg)
         {
-            case PInvoke.WM_APP when (uint)m.WParam == PInvoke.WM_SETFOCUS:
-                RaiseApplicationActivated();
-                break;
             case PInvoke.WM_SETFOCUS:
                 FocusApplication(false);
                 break;
             case PInvoke.WM_MOUSEACTIVATE or PInvoke.WM_LBUTTONDOWN or PInvoke.WM_MDIACTIVATE when !IsLeftMouseButtonDown:
-            {
                 FocusApplication(false);
                 break;
-            }
         }
 
         base.WndProc(ref m);
     }
 
-    private void ExternalApp_ProcessExited(object? sender, EventArgs e)
+    /// <summary>
+    /// Repositions the tracked application window to match the current host bounds.
+    /// </summary>
+    public void SetWindowPosition()
     {
-        RaiseApplicationClosed(new ApplicationClosedEventArgs {ProcessExited = true});
+        if (Disposing || IsDisposed || Options == null)
+            return;
+
+        try
+        {
+            if (_sessionCoordinator.IsEmbedded)
+            {
+                _sessionCoordinator.SetWindowPosition(new Rectangle(0, 0, Width, Height));
+            }
+            else if (_sessionCoordinator.HasWindow)
+            {
+                var screenPoint = PointToScreen(Point.Empty);
+                _sessionCoordinator.SetWindowPosition(new Rectangle(screenPoint.X, screenPoint.Y, Width, Height));
+                PInvoke.ShowWindow(_sessionCoordinator.WindowHandle, SHOW_WINDOW_CMD.SW_SHOWDEFAULT);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Cannot set the window position");
+        }
     }
 
-    private void ExternalApp_QueryWindow(object? sender, QueryWindowEventArgs e)
+    private async Task StartAsync(ExternalAppOptions options, CancellationToken cancellationToken = default)
     {
-        RaiseQueryWindow(e);
+        try
+        {
+            await _sessionCoordinator.StartAsync(options, RaiseWindowSelectionRequested, cancellationToken);
+
+            if (_sessionCoordinator.HasWindow &&
+                options.Embedding.StartEmbedded)
+            {
+                Logger.WithCallerInfo(log => log.LogDebug("Embedding window for '{Executable}'", options.Launch.Executable));
+                try
+                {
+                    await EmbedApplicationAsync(cancellationToken);
+                }
+                catch (EmbeddingFailedException ex)
+                {
+                    _sessionCoordinator.MarkAsExternal();
+                    Logger.LogWarning(
+                        ex,
+                        "Embedding '{Executable}' with mode {Mode} failed. Leaving the window external. Consider a non-reparented external-hosting mode for modern or packaged desktop apps.",
+                        options.Launch.Executable,
+                        options.Embedding.Mode);
+                    SetWindowPosition();
+                }
+            }
+
+            await _uiDispatcher.InvokeAsync(StartedSuccessful, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "{Method} failed starting '{Executable}'", nameof(StartAsync), options.Launch.Executable);
+            RaiseApplicationClosed(new ApplicationClosedEventArgs(ex));
+        }
     }
 
-    private void RaiseApplicationActivated()
+    private async Task EmbedApplicationAsync(CancellationToken cancellationToken = default)
     {
-        Logger.WithCallerInfo(logger => logger.LogDebug(nameof(RaiseApplicationActivated)));
+        if (!_sessionCoordinator.HasWindow)
+            throw new MissingWindowException();
+
+        await _uiDispatcher.InvokeAsync(async embedCancellationToken =>
+        {
+            await _sessionCoordinator.EmbedAsync(this, embedCancellationToken);
+            SetWindowPosition();
+            FocusApplication(false);
+        }, cancellationToken);
+    }
+
+    private void StartedSuccessful()
+    {
+        if (!_sessionCoordinator.IsRunning)
+            return;
+
+        _windowHookManager.Reset(
+            _sessionCoordinator.Process,
+            _sessionCoordinator.GetWindowTitle,
+            caption => _uiDispatcher.InvokeIfRequired(() => RaiseWindowTitleChangedCore(caption)),
+            () => _uiDispatcher.InvokeIfRequired(RaiseApplicationActivatedCore));
+        SetWindowPosition();
+        RaiseApplicationStarted();
+    }
+
+    private void SessionCoordinator_SessionClosed(object? sender, ApplicationClosedEventArgs e)
+    {
+        _windowHookManager.Dispose();
+        RaiseApplicationClosed(e);
+    }
+
+    private void RaiseApplicationActivatedCore()
+    {
+        Logger.WithCallerInfo(logger => logger.LogDebug(nameof(RaiseApplicationActivatedCore)));
         OnApplicationActivated();
         ApplicationActivated?.Invoke(this, EventArgs.Empty);
     }
 
-    private void RaiseApplicationClosed(ApplicationClosedEventArgs applicationClosedEventArgs)
-    {
-        if (InvokeRequired)
-        {
-            Invoke(RaiseApplicationClosed, applicationClosedEventArgs);
-            return;
-        }
+    private void RaiseApplicationClosed(ApplicationClosedEventArgs applicationClosedEventArgs) =>
+        _uiDispatcher.InvokeIfRequired(() => RaiseApplicationClosedCore(applicationClosedEventArgs));
 
-        Logger.WithCallerInfo(logger => logger.LogDebug(nameof(RaiseApplicationClosed)));
+    private void RaiseApplicationClosedCore(ApplicationClosedEventArgs applicationClosedEventArgs)
+    {
+        Logger.WithCallerInfo(logger => logger.LogDebug(nameof(RaiseApplicationClosedCore)));
         OnApplicationClosed();
         ApplicationClosed?.Invoke(this, applicationClosedEventArgs);
     }
@@ -398,142 +453,21 @@ public class ExternalAppHost : Control
         ApplicationStarted?.Invoke(this, EventArgs.Empty);
     }
 
-    private void RaiseQueryWindow(QueryWindowEventArgs e)
+    private void RaiseWindowSelectionRequested(WindowSelectionRequestEventArgs e) =>
+        _uiDispatcher.InvokeIfRequired(() => RaiseWindowSelectionRequestedCore(e));
+
+    private void RaiseWindowSelectionRequestedCore(WindowSelectionRequestEventArgs e)
     {
-        if (InvokeRequired)
-        {
-            Invoke(RaiseQueryWindow, e);
-            return;
-        }
-        Logger.WithCallerInfo(logger => logger.LogDebug(nameof(RaiseQueryWindow)));
-        OnQueryWindow(e);
-        QueryWindow?.Invoke(this, e);
+        Logger.WithCallerInfo(logger => logger.LogDebug(nameof(RaiseWindowSelectionRequestedCore)));
+        OnWindowSelectionRequested(e);
+        WindowSelectionRequested?.Invoke(this, e);
     }
 
-    private void RaiseWindowTitleChanged(string caption)
+    private void RaiseWindowTitleChangedCore(string caption)
     {
-        Logger.WithCallerInfo(logger => logger.LogDebug(nameof(RaiseWindowTitleChanged)));
+        Logger.WithCallerInfo(logger => logger.LogDebug(nameof(RaiseWindowTitleChangedCore)));
         var e = new WindowCaptionEventArgs(caption);
         OnWindowTitleChanged(e);
         WindowTitleChanged?.Invoke(this, e);
-    }
-
-    private async Task StartAsync(ExternalAppConfiguration configuration, CancellationToken cancellationToken = default)
-    {
-        Logger.WithCallerInfo(log => log.LogDebug("Starting executable '{Executable}'", configuration.Executable));
-        _externalApp = new ExternalApp(configuration, LoggerFactory);
-        _externalApp.ProcessExited += ExternalApp_ProcessExited;
-        _externalApp.QueryWindow += ExternalApp_QueryWindow;
-
-        try
-        {
-            await _externalApp.StartAsync(cancellationToken);
-            Logger.WithCallerInfo(log => log.LogDebug("Embedding window for '{Executable}'", configuration.Executable));
-            if (!_externalApp.Configuration.StartExternal)
-                await EmbedApplicationAsync(cancellationToken);
-
-            Invoke(StartedSuccessful);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "{Method} failed starting '{Executable}'",
-                nameof(StartAsync), configuration.Executable);
-            RaiseApplicationClosed(new ApplicationClosedEventArgs(ex));
-        }
-    }
-
-    /// <summary>
-    /// Sets the external application's window position to the default values.
-    /// </summary>
-    public void SetWindowPosition()
-    {
-        if (Disposing || IsDisposed)
-            return;
-
-        try
-        {
-            if (_externalApp is not null && _externalApp.IsEmbedded)
-            {
-                _externalApp.SetWindowPosition(0, 0, Width, Height);
-            }
-            else
-            {
-                if (_externalApp != null)
-                    PInvoke.ShowWindow(_externalApp.WindowHandle, SHOW_WINDOW_CMD.SW_SHOWDEFAULT);
-
-                SetWindowPosition(new Rectangle(
-                    PointToScreen(new Point(Left - SystemInformation.Border3DSize.Width, Top)).X,
-                    PointToScreen(new Point(Left - SystemInformation.Border3DSize.Width, Top)).Y,
-                    Width,
-                    Height));
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "Cannot set the window position");
-        }
-    }
-
-    private void StartedSuccessful()
-    {
-        if (_externalApp is null or {IsRunning: false})
-            return;
-
-        SetupHooks();
-        SetWindowPosition();
-        RaiseApplicationStarted();
-    }
-
-    private void SetupHooks()
-    {
-        if (_externalApp is null or {IsRunning: false})
-            return;
-
-        var winEventProc = new WINEVENTPROC(WinEventProc);
-
-        // always add the delegate to the _winEventProcedures list
-        // otherwise GC will dump this delegate and the hook fails
-        _winEventProcedures.Add(winEventProc);
-        const uint eventType = PInvoke.EVENT_OBJECT_NAMECHANGE;
-
-        var hook = PInvoke.SetWinEventHook(
-            eventType,
-            eventType,
-            new HINSTANCE(IntPtr.Zero),
-            winEventProc,
-            (uint) _externalApp.Process!.Id,
-            0,
-            PInvoke.WINEVENT_OUTOFCONTEXT);
-
-        _winEventHooks.Add(hook);
-    }
-
-    // ReSharper disable once IdentifierTypo
-    private void WinEventProc(HWINEVENTHOOK hWinEventHook, uint eventType, HWND hWnd, int idObject, int idChild,
-        uint dwEventThread, uint dwmsEventTime)
-    {
-        // Logger.WithCallerInfo(logger => logger.LogDebug(
-        //     "WinEventProc: EventType: {EventType}, Window Handle: {WindowHandle}, idObject: {IdObject}, idChild: {IdChild}",
-        //     eventType, hWnd, idObject, idChild));
-
-        if (_externalApp == null)
-            return;
-
-        // if (_externalApp.WindowHandle != hWnd)
-        // {
-        //     Logger.WithCallerInfo(logger => logger.LogDebug(
-        //         "WinEventProc: exiting because WindowHandle ({AppWindowHandle}) != hWnd ({WindowHandle})",
-        //         _externalApp.WindowHandle, hWnd));
-        //     return;
-        // }
-
-        switch (eventType)
-        {
-            case PInvoke.EVENT_OBJECT_NAMECHANGE:
-                var caption = _externalApp.GetWindowTitle();
-                Logger.WithCallerInfo(logger => logger.LogDebug("WinEventProc: EVENT_OBJECT_NAMECHANGE: {WindowTitle}", caption));
-                Invoke(RaiseWindowTitleChanged, caption);
-                break;
-        }
     }
 }

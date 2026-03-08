@@ -2,91 +2,175 @@
 
 [![NuGet Version](https://img.shields.io/nuget/v/RoyalApps.Community.ExternalApps.WinForms.svg?style=flat)](https://www.nuget.org/packages/RoyalApps.Community.ExternalApps.WinForms)
 [![NuGet Downloads](https://img.shields.io/nuget/dt/RoyalApps.Community.ExternalApps.WinForms.svg?color=green)](https://www.nuget.org/packages/RoyalApps.Community.ExternalApps.WinForms)
-[![.NET Framework](https://img.shields.io/badge/.NET%20Framework-%3E%3D%204.72-512bd4)](https://dotnet.microsoft.com/download)
-[![.NET](https://img.shields.io/badge/.NET-%3E%3D%20%208.0-blueviolet)](https://dotnet.microsoft.com/download)
+[![.NET](https://img.shields.io/badge/.NET-net10.0--windows-blueviolet)](https://dotnet.microsoft.com/download)
 
-RoyalApps.Community.ExternalApps contains projects/packages to easily embed/use other external applications in an application.
+`RoyalApps.Community.ExternalApps.WinForms` provides a WinForms control that can host windows from external processes.
+
+Version `2.x` is a managed rewrite. The package no longer depends on `WinEmbed.dll`; embedding is implemented in C# with Win32 interop generated via CsWin32.
+
 ![Screenshot](https://raw.githubusercontent.com/royalapplications/royalapps-community-externalapps/main/docs/assets/Screenshot.png)
 
-The ExternalAppHost control starts the configured process and embeds the application window into the control.
-
 > **Warning**
-> What this control does is not exactly a Microsoft supported scenario! Please read [Raymond Chen's blog post 'Is it legal to have a cross-process parent/child or owner/owned window relationship?'](https://devblogs.microsoft.com/oldnewthing/20130412-00/?p=4683) for more details. **Spoiler alert:** Yes, it's technically *legal*. It's also technically *legal* to [juggle chainsaws](https://www.youtube.com/watch?v=ti3MkTt5qv4)!
+> Cross-process window parenting is not a Microsoft-supported application model. Read [Raymond Chen's post about cross-process parent/child windows](https://devblogs.microsoft.com/oldnewthing/20130412-00/?p=4683) before shipping this in production.
 
-## Getting Started
-### Installation
-You should install the RoyalApps.Community.ExternalApps.WinForms with NuGet:
-```
+## Installation
+
+```powershell
 Install-Package RoyalApps.Community.ExternalApps.WinForms
 ```
-or via the command line interface:
-```
+
+```cmd
 dotnet add package RoyalApps.Community.ExternalApps.WinForms
 ```
-### Using the FreeRdpControl
-#### Add Control
-Place the `ExternalAppHost` on a form or in a container control (user control, tab control, etc.) and set the `Dock` property to `DockStyle.Fill`
 
-#### Configuration
-Create an instance of the `ExternalAppConfiguration` class and set the `Executable` property to the full path and file name of the application you want to embed.
+## Quick Start
 
-#### Start
-Simply call:
+Call `ExternalApps.Initialize()` once during application startup, place an `ExternalAppHost` on a form, and start a session with `ExternalAppOptions`.
+
 ```csharp
-ExternalAppHost.Start(externalAppConfiguration);
+using System;
+using System.Linq;
+using System.Windows.Forms;
+using RoyalApps.Community.ExternalApps.WinForms;
+using RoyalApps.Community.ExternalApps.WinForms.Embedding;
+using RoyalApps.Community.ExternalApps.WinForms.Options;
+
+ExternalApps.Initialize();
+
+var host = new ExternalAppHost
+{
+    Dock = DockStyle.Fill,
+};
+
+host.WindowSelectionRequested += (_, e) =>
+{
+    var candidate = e.NewlyDiscoveredCandidates
+        .Concat(e.Candidates)
+        .Where(window => window.IsVisible && window.IsTopLevel)
+        .FirstOrDefault(window =>
+            window.ProcessId == e.StartedProcessId ||
+            string.Equals(
+                System.IO.Path.GetFileName(window.ExecutablePath),
+                System.IO.Path.GetFileName(e.RequestedExecutablePath),
+                StringComparison.OrdinalIgnoreCase));
+
+    if (candidate?.PrefersExternalHosting == true)
+    {
+        Console.WriteLine(candidate.EmbeddingCompatibilityWarning);
+    }
+
+    if (candidate is not null)
+        e.SelectWindow(candidate);
+};
+
+host.Start(new ExternalAppOptions
+{
+    Launch =
+    {
+        Executable = @"C:\Windows\System32\notepad.exe",
+        KillOnClose = true,
+    },
+    Embedding =
+    {
+        Mode = EmbedMethod.Window,
+        StartEmbedded = true,
+        IncludeWindowChromeDimensions = true,
+    },
+    Selection =
+    {
+        Timeout = TimeSpan.FromSeconds(10),
+        PollInterval = TimeSpan.FromMilliseconds(250),
+    },
+});
 ```
-to start and embed the application.
 
-#### Close
-To close the application, call:
-```csharp
-ExternalAppHost.CloseApplication();
+Call `ExternalApps.Cleanup()` during application shutdown to release process-tracking resources.
+
+## API Model
+
+`ExternalAppOptions` is split into three areas:
+
+- `Launch`: executable path or command name, arguments, working directory, environment variables, credential options, elevation, existing-process reuse, hidden startup, and close behavior.
+- `Embedding`: whether the selected window should start embedded, whether it should be embedded as a full `Window` or as a client-area `Control`, and whether title bar and frame dimensions should be accounted for during sizing.
+- `Selection`: polling interval and timeout for runtime window discovery.
+
+The host no longer performs built-in title, class, process, or command-line matching from configuration. Instead, it repeatedly raises `WindowSelectionRequested` with the current list of `ExternalWindowCandidate` values until your code selects a window or the timeout expires.
+
+Each `ExternalWindowCandidate` also carries compatibility hints for modern or packaged desktop apps:
+
+- `PrefersExternalHosting`: indicates that the window looks like a poor candidate for Win32 reparenting.
+- `EmbeddingCompatibilityWarning`: explains why `Control` or `Window` embedding may be unstable.
+- `WindowSelectionRequestEventArgs.RequestedExecutablePath`: helps correlate windows when the original launch target hands off to another process.
+- `WindowSelectionRequestEventArgs.NewlyDiscoveredCandidates`: helps prefer windows that appeared during the current start attempt, which is especially useful when multiple instances of the same app are already open.
+
+If embedding still fails for a selected window, the library leaves the window external, logs a warning, and continues the session instead of failing startup.
+
+If no window is selected before the timeout elapses, the process is left running externally and the session stays unattached.
+
+`ExternalAppHost.AttachmentState` reports whether the current session is `None`, `External`, `Detached`, or `Embedded`.
+
+When `Launch.Executable` is just a command name such as `notepad.exe` or `pwsh`, the launcher starts it shell-style when possible. If direct process creation is required, for example because credentials or custom environment variables are configured, the library resolves the executable against `PATH`.
+
+`Launch.Executable` and `Launch.WorkingDirectory` also support `%ENVIRONMENT_VARIABLE%` expansion. Custom values from `Launch.EnvironmentVariables` override the current process environment during expansion.
+
+When `Launch.UseExistingProcess` is enabled, the library skips process creation and only performs discovery/selection against windows that are already present.
+
+## Key Events
+
+- `ApplicationStarted`: raised when startup completed and any initial embedding work finished.
+- `ApplicationClosed`: raised when the session closes, the process exits, or startup fails.
+- `ApplicationActivated`: raised when the tracked window receives focus.
+- `WindowSelectionRequested`: raised while candidate discovery is running so the consumer can select a window.
+- `WindowTitleChanged`: raised when the tracked window caption changes.
+
+## Host Operations
+
+- `CloseApplication()`: closes or terminates the tracked process according to the launch options.
+- `DetachApplication()`: removes the tracked window from the host control.
+- `EmbedApplication()`: re-embeds a detached window.
+- `FocusApplication(bool force)`: focuses the tracked window.
+- `MaximizeApplication()`: maximizes the tracked window.
+- `SetWindowPosition()`: syncs the tracked window to the host bounds.
+- `ShowSystemMenu(Point location)`: shows the tracked window's system menu.
+- `GetWindowScreenshot()`: captures the current tracked window as a bitmap.
+
+## Embedding Modes
+
+- `EmbedMethod.Control`: embeds only the client area. This is often visually cleaner but some applications may not paint focus state correctly.
+- `EmbedMethod.Window`: embeds the complete native window including its frame and menu. This usually preserves application chrome better, but ALT+TAB behavior can still be imperfect.
+
+`Embedding.IncludeWindowChromeDimensions` controls whether the embedded window's title bar and frame dimensions are included when the library sizes the window to the host bounds. Leave it enabled when you want the hosted client area to fill the control. Disable it when the target app behaves better with direct bounds applied.
+
+There is no dedicated `External` embed mode in v2. If a selected window cannot be reparented safely, the session leaves the window external and reports that through logging and session state.
+
+## Breaking Changes from v1
+
+- `ExternalAppConfiguration` was removed and replaced by `ExternalAppOptions`.
+- Static matching properties such as title, class, process, and command-line match strings were removed from the library API.
+- Window identification is now host-driven through `WindowSelectionRequested`.
+- `WinEmbed.dll` and native packaging assets were removed.
+- The old idea of a dedicated `EmbedMethod.External` mode is not part of the v2 API. Reparenting failures fall back to leaving the selected window external.
+
+## Demo Application
+
+The demo app in `src/RoyalApps.Community.ExternalApps.WinForms.Demo` shows both embedding modes and logs selection and lifecycle events while hosting multiple external applications.
+
+## Testing
+
+Run the unit tests with:
+
+```cmd
+dotnet test src/RoyalApps.Community.ExternalApps.WinForms.Tests/RoyalApps.Community.ExternalApps.WinForms.Tests.csproj
 ```
-Depending on the application, you may get a confirmation dialog in case there are unsaved changes. You can set the `ExternalAppConfiguration.KillOnClose` property to `true` to forcibly quit the application by killing the process.
 
-> **Note**
-> All processes which are started by the control will be closed/killed when the main application is closed or killed.
+The initial suite covers the selection loop, selection request event args, and the explicit launch/selection result types that drive session startup behavior.
 
-#### Detach Application Window
-Once the application is started and embedded, you can detach the application window by calling:
-```csharp
-ExternalAppHost.DetachApplication();
-```
+## Documentation
 
-#### Re-Embed Application Window
-To re-embed a detached application window, simply call:
-```
-ExternalAppHost.EmbedApplication();
-```
+The library produces XML documentation for all public APIs. The documentation site is built with VitePress, and the API reference pages are generated from the XML docs during the site build before publishing to GitHub Pages.
 
-#### Show System Menu
-Shows the app's system menu on the specified location:
-```csharp
-ExternalAppHost.ShowSystemMenu(Point location);
-```
+Guide pages:
 
-#### Subscribe to Events
-* `ExternalAppHost.ApplicationStarted` is raised when the application has been started and embedded.
-* `ExternalAppHost.ApplicationClosed` is raised when the application was closed or killed (even outside of the hosting application).
-* `ExternalAppHost.ApplicationActivated` is raised when the application has been activated (received the input focus).
-* `ExternalAppHost.WindowTitleChanged` is raised when the window title of application window has changed.
-
-## Exploring the Demo Application
-The demo application is quite simple. It has two tab controls (one left and one right) and a bottom panel for log output. Use the toolbar to enter an executable to embed. The **Add** drop down allows you to choose the left or the right tab control.
-
-There are two embed-methods available:
-* **Embed as Control:** Only the client area of the external app window is embedded (without the main menu). The limitation of this method is that some applications may look like they are not focused/active.
-* **Embed as Window:** The whole window is embedded including the main menu (if available). The limitation of this method is that the ALT-TAB order may be incorrect.
-
-In the **Application** menu you can detach and re-embed the active external application.
-
-## WinEmbed.dll
-This project includes a dll called WinEmbed.dll (in the /lib folder) which handles most of the Windows native stuff. You can find the C/C++ code in the /src/WinEmbed directory. To build this dll from source, you need Visual Studio 2022 or later and also the [WDK](https://docs.microsoft.com/en-us/windows-hardware/drivers/download-the-wdk) installed.
-
-For the ARM64 build to compile, install the following tools using Visual Studio 2022 installer:
-```
-MSVC v143 - VS 2022 C++ ARM64 build tools (latest)
-```
-
-## Acknowledgements
-Special thanks to [Alex](https://github.com/rbmm) for helping out with all the native code challenges.
+- `docs/articles/getting-started.md`
+- `docs/articles/selection-strategies.md`
+- `docs/articles/migrating-from-v1.md`
