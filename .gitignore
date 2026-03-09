@@ -350,8 +350,11 @@ MigrationBackup/
 .ionide/
 src/.idea
 
-# VitePress generated output
+# Local tooling
 .tools/
+
+# VitePress generated files
 docs/_site/
-docs/.vitepress/dist/
 docs/.vitepress/cache/
+docs/.vitepress/dist/
+docs/api/
