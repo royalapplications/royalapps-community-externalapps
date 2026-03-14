@@ -69,7 +69,7 @@ jobs:
         Get-ChildItem -Force | Where-Object { $_.Name -ne ".git" } | Remove-Item -Recurse -Force
         Copy-Item -Path "$sitePath/*" -Destination . -Recurse -Force
 
-        if (Test-Path .nojekyll) -eq $false {
+        if (-not (Test-Path .nojekyll)) {
           New-Item -ItemType File -Path .nojekyll | Out-Null
         }
 
