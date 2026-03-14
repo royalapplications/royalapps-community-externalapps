@@ -4,9 +4,27 @@
 [![NuGet Downloads](https://img.shields.io/nuget/dt/RoyalApps.Community.ExternalApps.WinForms.svg?color=green)](https://www.nuget.org/packages/RoyalApps.Community.ExternalApps.WinForms)
 [![.NET](https://img.shields.io/badge/.NET-net10.0--windows-blueviolet)](https://dotnet.microsoft.com/download)
 
-`RoyalApps.Community.ExternalApps.WinForms` provides a WinForms control that can host windows from external processes.
+`RoyalApps.Community.ExternalApps.WinForms` provides a WinForms control for launching, selecting, and hosting windows from external processes.
 
 Version `2.x` is a managed rewrite. The package no longer depends on `WinEmbed.dll`; embedding is implemented in C# with Win32 interop generated via CsWin32.
+
+## Documentation
+
+Read the documentation first:
+
+- [Documentation site](https://royalapplications.github.io/royalapps-community-externalapps/)
+- [Getting Started](https://royalapplications.github.io/royalapps-community-externalapps/articles/getting-started)
+- [Selection Strategies](https://royalapplications.github.io/royalapps-community-externalapps/articles/selection-strategies)
+- [API Reference](https://royalapplications.github.io/royalapps-community-externalapps/api/)
+
+## What's New in v2
+
+- Managed Win32 embedding with no `WinEmbed.dll` dependency
+- Runtime window selection through `WindowSelectionRequested` instead of static match configuration
+- Compatibility hints for modern or packaged desktop apps through `PrefersExternalHosting` and `EmbeddingCompatibilityWarning`
+- Automatic fallback to an external session when a selected window cannot be reparented
+- Existing-process reuse and discovery-only startup through `Launch.UseExistingProcess`
+- Structured runtime options split into `Launch`, `Embedding`, and `Selection`
 
 ![Screenshot](https://raw.githubusercontent.com/royalapplications/royalapps-community-externalapps/main/docs/assets/Screenshot.png)
 
@@ -25,7 +43,7 @@ dotnet add package RoyalApps.Community.ExternalApps.WinForms
 
 ## Quick Start
 
-Call `ExternalApps.Initialize()` once during application startup, place an `ExternalAppHost` on a form, and start a session with `ExternalAppOptions`.
+Call `ExternalApps.Initialize()` once during application startup, place an `ExternalAppHost` on a form, subscribe to `WindowSelectionRequested`, and then start a session with `ExternalAppOptions`.
 
 ```csharp
 using System;
@@ -165,12 +183,14 @@ dotnet test src/RoyalApps.Community.ExternalApps.WinForms.Tests/RoyalApps.Commun
 
 The initial suite covers the selection loop, selection request event args, and the explicit launch/selection result types that drive session startup behavior.
 
-## Documentation
+## Documentation Development
 
-The library produces XML documentation for all public APIs. The documentation site is built with VitePress, and the API reference pages are generated from the XML docs during the site build before publishing to GitHub Pages.
+The public documentation site is built with VitePress, and the API reference pages are generated from XML docs during the site build.
 
-Guide pages:
+Source files:
 
+- `docs/index.md`
 - `docs/articles/getting-started.md`
 - `docs/articles/selection-strategies.md`
 - `docs/articles/migrating-from-v1.md`
+- `scripts/generate-api-docs.mjs`

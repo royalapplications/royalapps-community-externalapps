@@ -4,26 +4,26 @@ layout: home
 hero:
   name: RoyalApps External Apps
   text: Managed hosting for external Windows applications
-  tagline: A WinForms host control for launching, selecting, and embedding external app windows without a native helper DLL.
+  tagline: A WinForms host control for launching, selecting, and embedding external app windows.
   image:
     src: /assets/RoyalApps_1024.png
     alt: RoyalApps
   actions:
     - theme: brand
-      text: Get Started
+      text: 🚀 Get Started
       link: /articles/getting-started
     - theme: alt
-      text: API Reference
+      text: 💡 API Reference
       link: /api/
     - theme: alt
-      text: GitHub
+      text: 🔗 GitHub
       link: https://github.com/royalapplications/royalapps-community-externalapps
 
 features:
-  - title: Managed v2 runtime
+  - title: Managed Win32 embedding
     details: Version 2 removes WinEmbed.dll and embeds windows using managed Win32 interop.
   - title: Callback-driven selection
-    details: Consumers decide which candidate window to embed through repeated runtime selection events.
+    details: Your code chooses which candidate window to embed during repeated selection events.
   - title: Structured configuration
     details: ExternalAppOptions separates launch, embedding, and selection concerns into explicit option groups.
 ---

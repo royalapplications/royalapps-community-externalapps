@@ -357,4 +357,6 @@ src/.idea
 docs/_site/
 docs/.vitepress/cache/
 docs/.vitepress/dist/
-docs/api/
+docs/api/index.md
+docs/api/sidebar.mjs
+docs/api/reference/

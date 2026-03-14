@@ -24,7 +24,7 @@ externalAppHost.WindowSelectionRequested += (_, e) =>
 };
 ```
 
-`NewlyDiscoveredCandidates` is based on the window handles that were already present before the current start attempt began. That makes it the best first filter when a second or third instance of the same app is launched.
+`NewlyDiscoveredCandidates` contains windows that appeared for the first time during the current selection session. That makes it the best first filter when a second or third instance of the same app is launched.
 
 ## Handle launcher stubs and process handoff
 
@@ -101,13 +101,13 @@ The selection loop continues until one of these things happens:
 If the timeout elapses without a selected window:
 
 - the started process is left running externally
-- the session remains unattached
+- the session has no selected window
 - `ExternalAppHost.AttachmentState` stays `None`
 
 If a window is selected but embedding later fails:
 
 - the session keeps the selected window
-- the window is left external instead of embedded
+- the window remains external instead of being embedded
 - `ExternalAppHost.AttachmentState` becomes `External`
 
 If a window is successfully embedded:

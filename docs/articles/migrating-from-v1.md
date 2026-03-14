@@ -40,10 +40,10 @@ Candidate windows also expose compatibility hints:
 - `PrefersExternalHosting`
 - `EmbeddingCompatibilityWarning`
 
-Those hints indicate that the selected window may be a poor candidate for Win32 reparenting.
+Those hints indicate that the selected window may be a poor candidate for Win32 reparenting and may need to remain external.
 
 ## Native dependency removal
 
 The library no longer ships or depends on `WinEmbed.dll`. Full-window and client-area embedding are implemented in managed code with Win32 interop.
 
-There is no dedicated `EmbedMethod.External` in v2. If a selected window cannot be reparented, the library leaves it external, logs a warning, and keeps the session alive.
+There is no dedicated `EmbedMethod.External` in v2. If a selected window cannot be reparented, the library keeps it external, logs a warning, and keeps the session alive.

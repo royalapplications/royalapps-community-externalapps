@@ -26,6 +26,8 @@ Add `ExternalAppHost` to a form or container and size it like any other WinForms
 
 ## Start a session
 
+Before you call `Start(...)`, subscribe to `WindowSelectionRequested` so your code can choose the correct window as soon as selection begins.
+
 Create `ExternalAppOptions` and call `Start(...)` on the host.
 
 ```csharp
@@ -77,7 +79,7 @@ When `Launch.UseExistingProcess` is enabled, the library skips process creation 
 
 ## Select the correct window
 
-The library no longer auto-matches windows from configuration. Subscribe to `WindowSelectionRequested` and choose a window from the provided candidate list.
+The library no longer auto-matches windows from configuration. Handle `WindowSelectionRequested` and choose a window from the provided candidate list.
 
 ```csharp
 using System.Linq;
@@ -106,7 +108,7 @@ externalAppHost.WindowSelectionRequested += (_, e) =>
 };
 ```
 
-The event is raised repeatedly until a window is selected or the configured timeout expires.
+The event is raised repeatedly until your code selects a window or the configured timeout expires.
 
 For modern or packaged desktop apps, inspect:
 
@@ -115,16 +117,16 @@ For modern or packaged desktop apps, inspect:
 - `WindowSelectionRequestEventArgs.RequestedExecutablePath`
 - `WindowSelectionRequestEventArgs.NewlyDiscoveredCandidates`
 
-When those are populated, the library is warning you that Win32 reparenting may be unstable and that the selected window may need to remain external.
+When those values are populated, the library is warning you that Win32 reparenting may be unstable and that the selected window may need to remain external.
 
 If reparenting still fails after selection, the library leaves the window external, logs a warning, and keeps the session alive instead of treating startup as a fatal error.
 
-There is no dedicated `EmbedMethod.External` mode. External fallback is automatic when selection succeeds but reparenting fails.
+There is no dedicated `EmbedMethod.External` mode. If selection succeeds but reparenting fails, the library automatically keeps the selected window external.
 
 Use `ExternalAppHost.AttachmentState` to distinguish:
 
 - `None`: no window is currently attached
-- `External`: a window was selected but is currently left external
+- `External`: a window was selected but is not currently embedded
 - `Detached`: a selected window was detached from the host
 - `Embedded`: the selected window is currently embedded
 
