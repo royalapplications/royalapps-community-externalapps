@@ -7,12 +7,10 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
-  group: pages
+  group: docs
   cancel-in-progress: true
 
 jobs:
@@ -26,7 +24,7 @@ jobs:
     - name: Setup Node
       uses: actions/setup-node@v6
       with:
-        node-version: 20.19.0
+        node-version: 22
         cache: npm
 
     - name: Setup .NET
@@ -34,28 +32,63 @@ jobs:
       with:
         dotnet-version: 10.0.x
 
-    - name: Configure Pages
-      uses: actions/configure-pages@v5
-
     - name: Install npm dependencies
       run: npm ci
 
     - name: Generate docs
       run: npm run docs:build
 
-    - name: Upload Pages artifact
-      uses: actions/upload-pages-artifact@v4
+    - name: Upload docs artifact
+      uses: actions/upload-artifact@v4
       with:
+        name: external-apps-docs
         path: docs/.vitepress/dist
 
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+    if: github.ref == 'refs/heads/main'
 
     steps:
-    - name: Deploy to GitHub Pages
-      id: deployment
-      uses: actions/deploy-pages@v4
+    - name: Checkout
+      uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+
+    - name: Download docs artifact
+      uses: actions/download-artifact@v6
+      with:
+        name: external-apps-docs
+        path: ${{ runner.temp }}/site
+
+    - name: Publish to gh-pages
+      shell: pwsh
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+        if git ls-remote --exit-code --heads origin gh-pages; then
+          git fetch origin gh-pages:gh-pages
+          git switch gh-pages
+        else
+          git switch --orphan gh-pages
+        fi
+
+        Get-ChildItem -Force | Where-Object { $_.Name -ne ".git" } | Remove-Item -Recurse -Force
+        Copy-Item -Path "$env:RUNNER_TEMP/site/*" -Destination . -Recurse -Force
+
+        if (Test-Path .nojekyll) -eq $false {
+          New-Item -ItemType File -Path .nojekyll | Out-Null
+        }
+
+        git add --all
+
+        if (git diff --cached --quiet) {
+          Write-Host "No documentation changes to publish."
+          exit 0
+        }
+
+        git commit -m "Deploy docs from $env:GITHUB_SHA"
+        git push --force origin gh-pages
