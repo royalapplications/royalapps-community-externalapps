@@ -6,6 +6,9 @@ on:
     - main
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 permissions:
   contents: write
 
@@ -14,7 +17,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  docs:
     runs-on: ubuntu-latest
 
     steps:
@@ -38,34 +41,19 @@ jobs:
     - name: Generate docs
       run: npm run docs:build
 
-    - name: Upload docs artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: external-apps-docs
-        path: docs/.vitepress/dist
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v6
-      with:
-        fetch-depth: 0
-
-    - name: Download docs artifact
-      uses: actions/download-artifact@v6
-      with:
-        name: external-apps-docs
-        path: ${{ runner.temp }}/site
-
     - name: Publish to gh-pages
+      if: github.ref == 'refs/heads/main'
       shell: pwsh
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
+        $sitePath = Join-Path $env:RUNNER_TEMP "site"
+        if (Test-Path $sitePath) {
+          Remove-Item -Path $sitePath -Recurse -Force
+        }
+        New-Item -ItemType Directory -Path $sitePath | Out-Null
+        Copy-Item -Path "docs/.vitepress/dist/*" -Destination $sitePath -Recurse -Force
+
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
@@ -77,7 +65,7 @@ jobs:
         fi
 
         Get-ChildItem -Force | Where-Object { $_.Name -ne ".git" } | Remove-Item -Recurse -Force
-        Copy-Item -Path "$env:RUNNER_TEMP/site/*" -Destination . -Recurse -Force
+        Copy-Item -Path "$sitePath/*" -Destination . -Recurse -Force
 
         if (Test-Path .nojekyll) -eq $false {
           New-Item -ItemType File -Path .nojekyll | Out-Null
