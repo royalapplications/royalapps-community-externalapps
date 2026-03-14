@@ -29,7 +29,7 @@ const publicApi = collectPublicApiSurface(
 
 execFileSync(
   "dotnet",
-  ["build", projectFile, "-c", "Release", "-nologo"],
+  ["build", projectFile, "-c", "Release", "-nologo", "/p:EnableWindowsTargeting=true"],
   { cwd: repoRoot, stdio: "inherit" });
 
 mkdirSync(generatedRoot, { recursive: true });
