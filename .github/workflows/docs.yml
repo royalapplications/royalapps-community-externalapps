@@ -57,12 +57,14 @@ jobs:
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-        if git ls-remote --exit-code --heads origin gh-pages; then
+        git ls-remote --exit-code --heads origin gh-pages | Out-Null
+        if ($LASTEXITCODE -eq 0) {
           git fetch origin gh-pages:gh-pages
           git switch gh-pages
-        else
+        }
+        else {
           git switch --orphan gh-pages
-        fi
+        }
 
         Get-ChildItem -Force | Where-Object { $_.Name -ne ".git" } | Remove-Item -Recurse -Force
         Copy-Item -Path "$sitePath/*" -Destination . -Recurse -Force
@@ -73,7 +75,8 @@ jobs:
 
         git add --all
 
-        if (git diff --cached --quiet) {
+        git diff --cached --quiet
+        if ($LASTEXITCODE -eq 0) {
           Write-Host "No documentation changes to publish."
           exit 0
         }
