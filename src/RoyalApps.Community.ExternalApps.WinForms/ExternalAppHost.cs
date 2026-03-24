@@ -170,7 +170,7 @@ public class ExternalAppHost : Control
 
         await _externalApp.EmbedAsync(this, cancellationToken);
 
-        Invoke(() =>
+        TryBeginInvoke(() =>
         {
             SetWindowPosition();
             FocusApplication(false);
@@ -328,7 +328,7 @@ public class ExternalAppHost : Control
         if (!_externalApp.IsEmbedded && !force)
             return;
 
-        Invoke(Focus);
+        TryBeginInvoke(Focus);
 
         _externalApp.FocusApplication();
     }
@@ -382,7 +382,7 @@ public class ExternalAppHost : Control
     {
         if (InvokeRequired)
         {
-            Invoke(RaiseApplicationClosed, applicationClosedEventArgs);
+            TryBeginInvoke(RaiseApplicationClosed, applicationClosedEventArgs);
             return;
         }
 
@@ -402,7 +402,7 @@ public class ExternalAppHost : Control
     {
         if (InvokeRequired)
         {
-            Invoke(RaiseQueryWindow, e);
+            TryBeginInvoke(RaiseQueryWindow, e);
             return;
         }
         Logger.WithCallerInfo(logger => logger.LogDebug(nameof(RaiseQueryWindow)));
@@ -432,7 +432,7 @@ public class ExternalAppHost : Control
             if (!_externalApp.Configuration.StartExternal)
                 await EmbedApplicationAsync(cancellationToken);
 
-            Invoke(StartedSuccessful);
+            TryBeginInvoke(StartedSuccessful);
         }
         catch (Exception ex)
         {
@@ -532,8 +532,48 @@ public class ExternalAppHost : Control
             case PInvoke.EVENT_OBJECT_NAMECHANGE:
                 var caption = _externalApp.GetWindowTitle();
                 Logger.WithCallerInfo(logger => logger.LogDebug("WinEventProc: EVENT_OBJECT_NAMECHANGE: {WindowTitle}", caption));
-                Invoke(RaiseWindowTitleChanged, caption);
+                TryBeginInvoke(RaiseWindowTitleChanged, caption);
                 break;
+        }
+    }
+
+    private bool TryBeginInvoke(Action action)
+    {
+        if (Disposing || IsDisposed || !IsHandleCreated)
+            return false;
+
+        try
+        {
+            if (InvokeRequired)
+                BeginInvoke(action);
+            else
+                action();
+
+            return true;
+        }
+        catch (InvalidOperationException) when (Disposing || IsDisposed || !IsHandleCreated)
+        {
+            return false;
+        }
+    }
+
+    private bool TryBeginInvoke(Delegate method, params object[] args)
+    {
+        if (Disposing || IsDisposed || !IsHandleCreated)
+            return false;
+
+        try
+        {
+            if (InvokeRequired)
+                BeginInvoke(method, args);
+            else
+                method.DynamicInvoke(args);
+
+            return true;
+        }
+        catch (InvalidOperationException) when (Disposing || IsDisposed || !IsHandleCreated)
+        {
+            return false;
         }
     }
 }
