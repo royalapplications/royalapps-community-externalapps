@@ -171,8 +171,20 @@ public class ExternalAppHost : Control
     /// <remarks>
     /// This method schedules the startup workflow on a background task and returns immediately. Subscribe to
     /// <see cref="ApplicationStarted"/>, <see cref="ApplicationClosed"/>, and <see cref="WindowSelectionRequested"/> to observe progress.
+    /// The control handle must already exist before calling this method.
     /// </remarks>
-    public void Start(ExternalAppOptions options) => _ = Task.Run(() => StartAsync(options));
+    public void Start(ExternalAppOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        if (!IsHandleCreated)
+        {
+            throw new InvalidOperationException(
+                "ExternalAppHost requires a created window handle before Start can be called. Ensure the control is created and shown before starting an external application.");
+        }
+
+        _ = Task.Run(() => StartAsync(options));
+    }
 
     /// <summary>
     /// Displays the system menu of the tracked window at the specified control-relative location.

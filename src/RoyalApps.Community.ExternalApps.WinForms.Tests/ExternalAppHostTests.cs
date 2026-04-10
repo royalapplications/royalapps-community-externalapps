@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging.Abstractions;
+using System.Windows.Forms;
 using Windows.Win32.Foundation;
 using Xunit;
 
@@ -51,14 +52,17 @@ public sealed class ExternalAppHostTests
             coordinator.IsRunning = true;
             return Task.CompletedTask;
         };
-        using var host = CreateHost(coordinator);
-        host.WindowSelectionRequested += (_, e) => selectionRaised.TrySetResult(e);
-        host.ApplicationStarted += (_, _) => startedRaised.TrySetResult();
 
-        host.Start(new ExternalAppOptions { Launch = { Executable = "cmd.exe" } });
+        await RunHostedAsync(coordinator, async host =>
+        {
+            host.WindowSelectionRequested += (_, e) => selectionRaised.TrySetResult(e);
+            host.ApplicationStarted += (_, _) => startedRaised.TrySetResult();
 
-        await selectionRaised.Task.WaitAsync(TimeSpan.FromSeconds(2));
-        await startedRaised.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            host.Start(new ExternalAppOptions { Launch = { Executable = "cmd.exe" } });
+
+            await selectionRaised.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            await startedRaised.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        });
     }
 
     [Fact]
@@ -70,13 +74,16 @@ public sealed class ExternalAppHostTests
         {
             OnStartAsync = (_, _, _) => Task.FromException(failure)
         };
-        using var host = CreateHost(coordinator);
-        host.ApplicationClosed += (_, e) => closedRaised.TrySetResult(e);
 
-        host.Start(new ExternalAppOptions { Launch = { Executable = "cmd.exe" } });
+        await RunHostedAsync(coordinator, async host =>
+        {
+            host.ApplicationClosed += (_, e) => closedRaised.TrySetResult(e);
 
-        var eventArgs = await closedRaised.Task.WaitAsync(TimeSpan.FromSeconds(2));
-        Assert.Same(failure, eventArgs.Exception);
+            host.Start(new ExternalAppOptions { Launch = { Executable = "cmd.exe" } });
+
+            var eventArgs = await closedRaised.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            Assert.Same(failure, eventArgs.Exception);
+        });
     }
 
     [Fact]
@@ -91,19 +98,22 @@ public sealed class ExternalAppHostTests
             OnStartAsync = (_, _, _) => Task.CompletedTask,
             OnEmbedAsync = (_, _) => Task.FromException(new EmbeddingFailedException("embed failed"))
         };
-        using var host = CreateHost(coordinator);
-        host.ApplicationStarted += (_, _) => startedRaised.TrySetResult();
 
-        host.Start(new ExternalAppOptions
+        await RunHostedAsync(coordinator, async host =>
         {
-            Launch = { Executable = "cmd.exe" },
-            Embedding = { StartEmbedded = true }
-        });
+            host.ApplicationStarted += (_, _) => startedRaised.TrySetResult();
 
-        await startedRaised.Task.WaitAsync(TimeSpan.FromSeconds(2));
-        Assert.Equal(1, coordinator.MarkAsExternalCallCount);
-        Assert.Equal(AttachmentState.External, coordinator.AttachmentState);
-        Assert.False(host.IsEmbedded);
+            host.Start(new ExternalAppOptions
+            {
+                Launch = { Executable = "cmd.exe" },
+                Embedding = { StartEmbedded = true }
+            });
+
+            await startedRaised.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            Assert.Equal(1, coordinator.MarkAsExternalCallCount);
+            Assert.Equal(AttachmentState.External, coordinator.AttachmentState);
+            Assert.False(host.IsEmbedded);
+        });
     }
 
     [Fact]
@@ -118,24 +128,86 @@ public sealed class ExternalAppHostTests
             AttachmentState = AttachmentState.External,
             OnStartAsync = (_, _, _) => Task.CompletedTask
         };
-        using var host = CreateHost(coordinator);
-        host.ApplicationStarted += (_, _) => startedRaised.TrySetResult();
 
-        host.Start(new ExternalAppOptions
+        await RunHostedAsync(coordinator, async host =>
         {
-            Launch = { Executable = "cmd.exe" },
-            Embedding = { StartEmbedded = true }
-        });
+            host.ApplicationStarted += (_, _) => startedRaised.TrySetResult();
 
-        await startedRaised.Task.WaitAsync(TimeSpan.FromSeconds(2));
-        Assert.Equal(1, coordinator.EmbedCallCount);
-        Assert.Equal(AttachmentState.Embedded, coordinator.AttachmentState);
-        Assert.True(host.IsEmbedded);
+            host.Start(new ExternalAppOptions
+            {
+                Launch = { Executable = "cmd.exe" },
+                Embedding = { StartEmbedded = true }
+            });
+
+            await startedRaised.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            Assert.Equal(1, coordinator.EmbedCallCount);
+            Assert.Equal(AttachmentState.Embedded, coordinator.AttachmentState);
+            Assert.True(host.IsEmbedded);
+        });
+    }
+
+    [Fact]
+    public void Start_WithoutCreatedHandle_ThrowsInvalidOperationException()
+    {
+        using var coordinator = new StubSessionCoordinator();
+        using var host = CreateHost(coordinator);
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => host.Start(new ExternalAppOptions { Launch = { Executable = "cmd.exe" } }));
+
+        Assert.Contains("created window handle", exception.Message, StringComparison.Ordinal);
     }
 
     private static ExternalAppHost CreateHost(StubSessionCoordinator coordinator)
     {
         return new ExternalAppHost(coordinator, NullLoggerFactory.Instance);
+    }
+
+    private static Task RunHostedAsync(
+        StubSessionCoordinator coordinator,
+        Func<ExternalAppHost, Task> testBody)
+    {
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var thread = new Thread(() =>
+        {
+            using var form = new Form();
+            using var host = CreateHost(coordinator);
+            host.Dock = DockStyle.Fill;
+            form.Controls.Add(host);
+
+            form.Shown += async (_, _) =>
+            {
+                try
+                {
+                    await testBody(host);
+                    completion.TrySetResult();
+                }
+                catch (Exception ex)
+                {
+                    completion.TrySetException(ex);
+                }
+                finally
+                {
+                    form.Close();
+                }
+            };
+
+            try
+            {
+                Application.Run(form);
+            }
+            catch (Exception ex)
+            {
+                completion.TrySetException(ex);
+            }
+        });
+
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.IsBackground = true;
+        thread.Start();
+
+        return completion.Task;
     }
 
     private sealed class StubSessionCoordinator : IExternalAppHostSessionCoordinator
