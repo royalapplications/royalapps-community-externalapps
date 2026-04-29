@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel;
 using System.Drawing;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Windows.Win32;
@@ -106,9 +107,11 @@ internal abstract class EmbeddingStrategyBase : IEmbeddingStrategy
 
             try
             {
-                PInvoke.SetParent(childWindowHandle, parentWindowHandle);
-                lastWin32Exception = new Win32Exception();
-                success = lastWin32Exception.NativeErrorCode == 0;
+                Marshal.SetLastPInvokeError(0);
+                var previousParent = PInvoke.SetParent(childWindowHandle, parentWindowHandle);
+                var nativeErrorCode = Marshal.GetLastPInvokeError();
+                lastWin32Exception = new Win32Exception(nativeErrorCode);
+                success = previousParent != HWND.Null || nativeErrorCode == 0;
 
                 Logger.LogDebug(
                     success ? null : lastWin32Exception,
