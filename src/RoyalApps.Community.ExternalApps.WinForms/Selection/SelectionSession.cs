@@ -41,6 +41,7 @@ internal sealed class SelectionSession : ISelectionSession
         var seenWindowHandles = baselineWindowHandles != null
             ? new HashSet<nint>(baselineWindowHandles)
             : [];
+        var loggedStartedProcessExit = false;
 
         _logger.LogDebug(
             "Window selection started with {BaselineCount} baseline windows",
@@ -80,10 +81,16 @@ internal sealed class SelectionSession : ISelectionSession
                 _logger.LogDebug("A consumer selected window handle {WindowHandle} which is not in the current candidate list", eventArgs.SelectedWindowHandle);
             }
 
-            if (startedProcess is { HasExited: true })
+            if (startedProcess is { HasExited: true } && !options.ContinueAfterStartedProcessExit)
             {
                 _logger.LogDebug("Window selection stopped because the started process exited before a selection was made");
                 return WindowSelectionResult.StartedProcessExited();
+            }
+
+            if (startedProcess is { HasExited: true } && !loggedStartedProcessExit)
+            {
+                _logger.LogDebug("Window selection is continuing after the started process exited");
+                loggedStartedProcessExit = true;
             }
 
             if (stopwatch.Elapsed >= timeout)

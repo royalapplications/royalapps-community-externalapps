@@ -228,7 +228,8 @@ internal sealed class ExternalAppSession : IDisposable
                 _selectedCandidate = selectedCandidate;
                 WindowHandle = new HWND(selectedCandidate.WindowHandle);
                 RegisterTrackedWindow();
-                Process ??= Process.GetProcessById(selectedCandidate.ProcessId);
+                if (Process?.Id != selectedCandidate.ProcessId)
+                    Process = Process.GetProcessById(selectedCandidate.ProcessId);
                 AttachmentState = AttachmentState.External;
                 break;
             case WindowSelectionOutcome.TimedOut when Process != null:

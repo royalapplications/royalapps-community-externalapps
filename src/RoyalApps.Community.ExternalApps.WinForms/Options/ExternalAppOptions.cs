@@ -149,4 +149,12 @@ public sealed class ExternalAppSelectionOptions
     /// Gets or sets the interval between candidate discovery polls while the host is deciding which window to embed.
     /// </summary>
     public TimeSpan PollInterval { get; set; } = TimeSpan.FromMilliseconds(250);
+
+    /// <summary>
+    /// Gets or sets a value indicating whether discovery should continue when the originally started process exits before a window is selected.
+    /// </summary>
+    /// <remarks>
+    /// Some applications use a short-lived launcher process before creating the window in another process.
+    /// </remarks>
+    public bool ContinueAfterStartedProcessExit { get; set; }
 }

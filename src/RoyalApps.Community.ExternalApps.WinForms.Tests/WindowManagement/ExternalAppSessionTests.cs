@@ -59,6 +59,30 @@ public sealed class ExternalAppSessionTests
     }
 
     [Fact]
+    public async Task StartAsync_SelectedWindowFromDifferentProcess_TracksSelectedWindowProcess()
+    {
+        using var exitedProcess = StartAndWaitForExit();
+        var candidate = CreateCandidate((IntPtr)0x7104, Environment.ProcessId);
+        var session = CreateSession(
+            ProcessLaunchResult.Started(exitedProcess),
+            WindowSelectionResult.Selected(candidate));
+
+        try
+        {
+            await session.StartAsync(null, CancellationToken.None);
+
+            Assert.NotNull(session.Process);
+            Assert.Equal(Environment.ProcessId, session.Process!.Id);
+            Assert.Equal(AttachmentState.External, session.AttachmentState);
+            Assert.True(session.HasWindow);
+        }
+        finally
+        {
+            session.Dispose();
+        }
+    }
+
+    [Fact]
     public async Task EmbedAsync_ThenDetachApplication_UpdatesAttachmentState()
     {
         var candidate = CreateCandidate((IntPtr)0x7102, Environment.ProcessId);
@@ -145,6 +169,24 @@ public sealed class ExternalAppSessionTests
             IsVisible = true,
             IsTopLevel = true
         };
+    }
+
+    private static Process StartAndWaitForExit()
+    {
+        var process = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = "cmd.exe",
+                Arguments = "/c exit 0",
+                CreateNoWindow = true,
+                UseShellExecute = false
+            }
+        };
+
+        process.Start();
+        process.WaitForExit();
+        return process;
     }
 
     private sealed class StubProcessLauncher : IProcessLauncher

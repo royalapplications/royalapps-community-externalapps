@@ -39,6 +39,31 @@ internal sealed class ExternalAppHostUiDispatcher
         }
     }
 
+    public void InvokeSynchronouslyIfRequired(Action action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+
+        if (!CanDispatch())
+            return;
+
+        try
+        {
+            if (_control.InvokeRequired)
+            {
+                _control.Invoke(action);
+                return;
+            }
+
+            action();
+        }
+        catch (InvalidOperationException) when (!CanDispatch())
+        {
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
+
     public async Task InvokeAsync(Action action, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(action);
@@ -95,7 +120,7 @@ internal sealed class ExternalAppHostUiDispatcher
 
     private bool CanDispatch()
     {
-        return !_control.IsDisposed && _control.IsHandleCreated;
+        return _control is { IsDisposed: false, IsHandleCreated: true };
     }
 
     private async Task<bool> WaitForHandleAsync(CancellationToken cancellationToken)
@@ -108,11 +133,8 @@ internal sealed class ExternalAppHostUiDispatcher
 
         var taskCompletionSource = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        EventHandler? handleCreatedHandler = null;
-        EventHandler? disposedHandler = null;
-
-        handleCreatedHandler = (_, _) => taskCompletionSource.TrySetResult(true);
-        disposedHandler = (_, _) => taskCompletionSource.TrySetResult(false);
+        EventHandler handleCreatedHandler = (_, _) => taskCompletionSource.TrySetResult(true);
+        EventHandler disposedHandler = (_, _) => taskCompletionSource.TrySetResult(false);
 
         _control.HandleCreated += handleCreatedHandler;
         _control.Disposed += disposedHandler;

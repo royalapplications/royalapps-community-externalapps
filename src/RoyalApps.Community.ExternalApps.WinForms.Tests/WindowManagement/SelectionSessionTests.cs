@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -82,6 +83,40 @@ public sealed class SelectionSessionTests
 
         Assert.Equal(WindowSelectionOutcome.StartedProcessExited, result.Outcome);
         Assert.Null(result.SelectedCandidate);
+    }
+
+    [Fact]
+    public async Task SelectWindowAsync_ContinuesAfterStartedProcessExits_WhenConfigured()
+    {
+        using var process = StartAndWaitForExit();
+        var expectedCandidate = CreateCandidate((IntPtr)0x2501, 2501);
+        var session = new SelectionSession(
+            new SequencedWindowCatalog(
+                [],
+                [expectedCandidate]),
+            NullLogger<SelectionSession>.Instance);
+        var options = new ExternalAppSelectionOptions
+        {
+            Timeout = TimeSpan.FromMilliseconds(50),
+            PollInterval = TimeSpan.FromMilliseconds(1),
+            ContinueAfterStartedProcessExit = true
+        };
+
+        var result = await session.SelectWindowAsync(
+            process,
+            requestedExecutablePath: "cmd.exe",
+            baselineWindowHandles: null,
+            options,
+            eventArgs =>
+            {
+                var candidate = eventArgs.Candidates.FirstOrDefault();
+                if (candidate != null)
+                    eventArgs.SelectWindow(candidate);
+            },
+            CancellationToken.None);
+
+        Assert.Equal(WindowSelectionOutcome.Selected, result.Outcome);
+        Assert.Same(expectedCandidate, result.SelectedCandidate);
     }
 
     [Fact]

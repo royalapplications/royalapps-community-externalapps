@@ -466,7 +466,7 @@ public class ExternalAppHost : Control
     }
 
     private void RaiseWindowSelectionRequested(WindowSelectionRequestEventArgs e) =>
-        _uiDispatcher.InvokeIfRequired(() => RaiseWindowSelectionRequestedCore(e));
+        _uiDispatcher.InvokeSynchronouslyIfRequired(() => RaiseWindowSelectionRequestedCore(e));
 
     private void RaiseWindowSelectionRequestedCore(WindowSelectionRequestEventArgs e)
     {
