@@ -2,7 +2,7 @@
 
 [![NuGet Version](https://img.shields.io/nuget/v/RoyalApps.Community.ExternalApps.WinForms.svg?style=flat)](https://www.nuget.org/packages/RoyalApps.Community.ExternalApps.WinForms)
 [![NuGet Downloads](https://img.shields.io/nuget/dt/RoyalApps.Community.ExternalApps.WinForms.svg?color=green)](https://www.nuget.org/packages/RoyalApps.Community.ExternalApps.WinForms)
-[![.NET](https://img.shields.io/badge/.NET-net10.0--windows-blueviolet)](https://dotnet.microsoft.com/download)
+[![.NET](https://img.shields.io/badge/.NET-10%20%7C%2011-blueviolet)](https://dotnet.microsoft.com/download)
 
 `RoyalApps.Community.ExternalApps.WinForms` provides a WinForms control for launching, selecting, and hosting windows from external processes.
 
@@ -194,3 +194,26 @@ Source files:
 - `docs/articles/selection-strategies.md`
 - `docs/articles/migrating-from-v1.md`
 - `scripts/generate-api-docs.mjs`
+
+## NuGet trusted publishing
+
+The `publish.yml` workflow builds and tests pull requests. Pushes to `main` also publish the package using GitHub OIDC and a short-lived NuGet API key.
+
+Before the first publish, create a policy under your nuget.org account's **Trusted Publishing** settings:
+
+| Setting | Value |
+| --- | --- |
+| Policy name | `royalapps-community-externalapps` (or another descriptive name) |
+| Package owner | The NuGet user or organization that owns `RoyalApps.Community.ExternalApps.WinForms` |
+| Repository owner | `royalapplications` |
+| Repository | `royalapps-community-externalapps` |
+| Workflow file | `publish.yml` (filename only) |
+| Environment | Leave empty; this workflow does not use a GitHub environment |
+| Package scope | `RoyalApps.Community.ExternalApps.WinForms` |
+| Allowed operation | Push new versions of the existing package |
+
+In the repository's **Settings → Secrets and variables → Actions → Variables**, add `NUGET_USER` with the personal nuget.org username of the account that created the policy. Use the profile name, rather than an email address or the package-owning organization name.
+
+After a successful trusted publish, remove the old `NUGET_API_KEY` repository secret. Revoke the old API key on nuget.org once any other workflows using it have migrated. If NuGet marks the policy as temporarily active, complete the first publish within its activation window or reactivate it before publishing.
+
+See the [NuGet trusted publishing documentation](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing) for details.

@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Linq;
 using System.Management;
 using Microsoft.Extensions.Logging;
 
@@ -24,8 +23,10 @@ internal sealed class ProcessMetadataProvider
         try
         {
             using var searcher = new ManagementObjectSearcher("SELECT ProcessId, CommandLine FROM Win32_Process");
-            foreach (var result in searcher.Get().OfType<ManagementObject>())
+            using var results = searcher.Get();
+            foreach (ManagementBaseObject result in results)
             {
+                using var managementObject = result;
                 var processIdValue = result["ProcessId"]?.ToString();
                 if (!int.TryParse(processIdValue, out var processId))
                     continue;
