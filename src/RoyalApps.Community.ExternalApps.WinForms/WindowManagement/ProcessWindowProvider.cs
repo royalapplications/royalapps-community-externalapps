@@ -54,7 +54,7 @@ internal sealed class ProcessWindowProvider
 
             try
             {
-                var process = Process.GetProcessById(pid);
+                using var process = Process.GetProcessById(pid);
                 windows.Add(new ProcessWindowInfo(pid, GetProcessExe(process), hWnd, windowName));
             }
             catch (ArgumentException ex)

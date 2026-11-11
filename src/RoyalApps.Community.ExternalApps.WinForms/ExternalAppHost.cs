@@ -402,7 +402,8 @@ public class ExternalAppHost : Control
     {
         if (InvokeRequired)
         {
-            TryBeginInvoke(RaiseQueryWindow, e);
+            // The caller reads the selected handle as soon as this event returns.
+            Invoke(() => RaiseQueryWindow(e));
             return;
         }
         Logger.WithCallerInfo(logger => logger.LogDebug(nameof(RaiseQueryWindow)));

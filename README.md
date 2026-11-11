@@ -2,8 +2,7 @@
 
 [![NuGet Version](https://img.shields.io/nuget/v/RoyalApps.Community.ExternalApps.WinForms.svg?style=flat)](https://www.nuget.org/packages/RoyalApps.Community.ExternalApps.WinForms)
 [![NuGet Downloads](https://img.shields.io/nuget/dt/RoyalApps.Community.ExternalApps.WinForms.svg?color=green)](https://www.nuget.org/packages/RoyalApps.Community.ExternalApps.WinForms)
-[![.NET Framework](https://img.shields.io/badge/.NET%20Framework-%3E%3D%204.72-512bd4)](https://dotnet.microsoft.com/download)
-[![.NET](https://img.shields.io/badge/.NET-%3E%3D%20%208.0-blueviolet)](https://dotnet.microsoft.com/download)
+[![.NET](https://img.shields.io/badge/.NET-10%20%7C%2011-blueviolet)](https://dotnet.microsoft.com/download)
 
 RoyalApps.Community.ExternalApps contains projects/packages to easily embed/use other external applications in an application.
 ![Screenshot](https://raw.githubusercontent.com/royalapplications/royalapps-community-externalapps/main/docs/assets/Screenshot.png)
@@ -23,7 +22,7 @@ or via the command line interface:
 ```
 dotnet add package RoyalApps.Community.ExternalApps.WinForms
 ```
-### Using the FreeRdpControl
+### Using the ExternalAppHost
 #### Add Control
 Place the `ExternalAppHost` on a form or in a container control (user control, tab control, etc.) and set the `Dock` property to `DockStyle.Fill`
 
@@ -87,6 +86,41 @@ For the ARM64 build to compile, install the following tools using Visual Studio 
 ```
 MSVC v143 - VS 2022 C++ ARM64 build tools (latest)
 ```
+
+## Building and testing
+
+Install the .NET 10 and .NET 11 SDKs on Windows, then run:
+
+```powershell
+dotnet build src/RoyalApps.Community.ExternalApps.slnx -c Release
+dotnet test src/RoyalApps.Community.ExternalApps.WinForms.Tests/RoyalApps.Community.ExternalApps.WinForms.Tests.csproj -c Release --no-build
+dotnet pack src/RoyalApps.Community.ExternalApps.WinForms/RoyalApps.Community.ExternalApps.WinForms.csproj -c Release --no-build -o artifacts
+```
+
+The library and demo target `net10.0-windows` and `net11.0-windows`. The package includes native libraries for x64 and ARM64.
+
+## NuGet trusted publishing
+
+The `publish.yml` workflow builds and tests pull requests. Pushes to `main` or `v1` also publish the package using GitHub OIDC and a short-lived NuGet API key.
+
+Before the first publish, create a policy under your nuget.org account's **Trusted Publishing** settings:
+
+| Setting | Value |
+| --- | --- |
+| Policy name | `royalapps-community-externalapps` (or another descriptive name) |
+| Package owner | The NuGet user or organization that owns `RoyalApps.Community.ExternalApps.WinForms` |
+| Repository owner | `royalapplications` |
+| Repository | `royalapps-community-externalapps` |
+| Workflow file | `publish.yml` (filename only) |
+| Environment | Leave empty; this workflow does not use a GitHub environment |
+| Package scope | `RoyalApps.Community.ExternalApps.WinForms` |
+| Allowed operation | Push new versions of the existing package |
+
+In the repository's **Settings → Secrets and variables → Actions → Variables**, add `NUGET_USER` with the personal nuget.org username of the account that created the policy. Use the profile name, rather than an email address or the package-owning organization name.
+
+After a successful trusted publish, remove the old `NUGET_API_KEY` repository secret. Revoke the old API key on nuget.org once any other workflows using it have migrated. If NuGet marks the policy as temporarily active, complete the first publish within its activation window or reactivate it before publishing.
+
+See the [NuGet trusted publishing documentation](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing) for details.
 
 ## Acknowledgements
 Special thanks to [Alex](https://github.com/rbmm) for helping out with all the native code challenges.

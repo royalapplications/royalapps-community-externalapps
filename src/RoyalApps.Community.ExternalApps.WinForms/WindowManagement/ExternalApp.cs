@@ -252,6 +252,7 @@ internal sealed class ExternalApp : IDisposable
 
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             ApplicationState = ApplicationState.Starting;
 
             Process? process = null;
@@ -320,14 +321,20 @@ internal sealed class ExternalApp : IDisposable
             if (WindowHandle == HWND.Null && Process.MainWindowHandle != IntPtr.Zero)
                 WindowHandle = new HWND(Process.MainWindowHandle);
 
-            Process.EnableRaisingEvents = true;
             Process.Exited += AppProcess_Exited;
+            Process.EnableRaisingEvents = true;
             ApplicationState = ApplicationState.Running;
         }
         catch (OperationCanceledException)
         {
             _logger.LogInformation("{Method} has been cancelled", nameof(StartAsync));
             ApplicationState = ApplicationState.Stopped;
+            throw;
+        }
+        catch
+        {
+            ApplicationState = ApplicationState.Stopped;
+            throw;
         }
     }
 
@@ -444,10 +451,10 @@ internal sealed class ExternalApp : IDisposable
 
         // setup WMI
         var wmiQuery = string.IsNullOrWhiteSpace(processNameToTrack)
-            ? $"{win32Processes} WHERE Name='{processNameToTrack}'"
-            : win32Processes;
+            ? win32Processes
+            : $"{win32Processes} WHERE Name='{processNameToTrack.Replace("\\", "\\\\").Replace("'", "\\'")}'";
 
-        var searcher = new ManagementObjectSearcher(wmiQuery);
+        using var searcher = new ManagementObjectSearcher(wmiQuery);
         _logger.LogDebug("WMI query to execute: {WmiQuery}", wmiQuery);
 
         var debugInfo = new StringBuilder();
@@ -465,19 +472,21 @@ internal sealed class ExternalApp : IDisposable
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            foreach (var managementBaseObject in searcher.Get())
+            using var results = searcher.Get();
+            foreach (ManagementBaseObject managementBaseObject in results)
             {
+                using var managementObject = managementBaseObject;
                 if (managementBaseObject is not ManagementObject wmiWin32Process)
                     continue;
 
-                var commandLine = wmiWin32Process["CommandLine"].ToString();
-                var processIdString = wmiWin32Process["ProcessId"].ToString();
+                var commandLine = wmiWin32Process["CommandLine"]?.ToString();
+                var processIdString = wmiWin32Process["ProcessId"]?.ToString();
 
                 // check if we can parse the process id and if we have a valid command line
                 if (!int.TryParse(processIdString, out var processId))
                     continue;
 
-                if (string.IsNullOrWhiteSpace(commandLine) || processId <= -1)
+                if (processId <= 0)
                     continue;
 
                 debugInfo.AppendLine($"Process: {processIdString}, Command Line: {commandLine}");
@@ -485,12 +494,19 @@ internal sealed class ExternalApp : IDisposable
                 // if no command line match string has been provided, take the process we found
                 // or in case a command line match string has been provided, check if it matches
                 if (!string.IsNullOrWhiteSpace(commandLineMatch) &&
-                    !commandLine.ToLower().Contains(commandLineMatch!.ToLower()))
+                    (commandLine == null || !commandLine.Contains(commandLineMatch, StringComparison.OrdinalIgnoreCase)))
                     continue;
 
                 _logger.LogDebug("{Method} succeeded - Details: {Details}", nameof(FindProcessAsync), debugInfo);
 
-                return Process.GetProcessById(processId);
+                try
+                {
+                    return Process.GetProcessById(processId);
+                }
+                catch (ArgumentException)
+                {
+                    // The process may have exited since the WMI snapshot was taken.
+                }
             }
 
             tryCount++;
